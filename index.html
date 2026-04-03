@@ -126,10 +126,70 @@
                 <h3>Automatic Setup Feed</h3>
               </div>
               <div class="legend">
+                <span class="legend-pill s-tier">S Tier</span>
                 <span class="legend-pill bullish">Bullish</span>
                 <span class="legend-pill bearish">Bearish</span>
                 <span class="legend-pill neutral">Near Zone</span>
               </div>
+            </div>
+
+            <div class="filter-bar">
+              <label class="mini-control">
+                <span>Bias</span>
+                <select id="biasFilter">
+                  <option value="all">All</option>
+                  <option value="bullish">Bullish</option>
+                  <option value="bearish">Bearish</option>
+                </select>
+              </label>
+              <label class="mini-control">
+                <span>Divergence</span>
+                <select id="divergenceFilter">
+                  <option value="all">All</option>
+                  <option value="bullish">Bullish</option>
+                  <option value="bearish">Bearish</option>
+                  <option value="none">None</option>
+                </select>
+              </label>
+              <label class="mini-control">
+                <span>Zone State</span>
+                <select id="zoneFilter">
+                  <option value="all">All</option>
+                  <option value="inside">Inside zone</option>
+                  <option value="near">Near zone</option>
+                </select>
+              </label>
+              <label class="mini-control">
+                <span>Timeframe</span>
+                <select id="timeframeFilter">
+                  <option value="all">All</option>
+                  <option value="4H">4H</option>
+                  <option value="Daily">Daily</option>
+                  <option value="Weekly">Weekly</option>
+                </select>
+              </label>
+              <label class="mini-control">
+                <span>Trade Quality</span>
+                <select id="qualityFilter">
+                  <option value="all">All</option>
+                  <option value="S">S</option>
+                  <option value="A+">A+</option>
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="Watch">Watch</option>
+                </select>
+              </label>
+              <label class="mini-control">
+                <span>Sort</span>
+                <select id="sortBy">
+                  <option value="score">Highest score</option>
+                  <option value="distance">Closest to order block</option>
+                  <option value="quality">Best trade quality</option>
+                  <option value="confluence">Most timeframe confluence</option>
+                  <option value="rr">Best risk/reward</option>
+                  <option value="recent">Newest zone</option>
+                </select>
+              </label>
             </div>
 
             <div class="table-wrap">
@@ -142,14 +202,18 @@
                     <th>Last</th>
                     <th>Order Block</th>
                     <th>Distance</th>
+                    <th>Liquidity</th>
                     <th>Divergence</th>
+                    <th>Plan</th>
+                    <th>R:R</th>
+                    <th>Quality</th>
                     <th>Score</th>
                     <th>Chart</th>
                   </tr>
                 </thead>
                 <tbody id="stocksBody">
                   <tr>
-                    <td colspan="9" class="empty-state">Run a scan to populate the terminal.</td>
+                    <td colspan="13" class="empty-state">Run a scan to populate the terminal.</td>
                   </tr>
                 </tbody>
               </table>

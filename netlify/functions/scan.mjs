@@ -49,8 +49,22 @@ const INDEX_INSTRUMENTS = [
     sourceSymbol: "NIFTY_MID_SELECT.NS",
     tvSymbol: "NSE:MIDCPNIFTY1!",
     cashTvSymbol: "NSE:NIFTY_MID_SELECT"
+  },
+  {
+    name: "NIFTY NEXT 50",
+    sourceSymbol: "^NIFTYJR",
+    tvSymbol: "NSE:NIFTYNXT501!",
+    cashTvSymbol: "NSE:NIFTYNXT50"
   }
 ];
+
+const QUALITY_RANK = {
+  S: 5,
+  "A+": 4,
+  A: 3,
+  B: 2,
+  Watch: 1
+};
 
 function csvToRows(text) {
   const [headerLine, ...lines] = text.trim().split(/\r?\n/);
@@ -259,6 +273,48 @@ function detectRsiDivergence(rows) {
   return null;
 }
 
+function detectLiquiditySweep(rows, direction, lookback = 12) {
+  if (rows.length < lookback + 3) {
+    return null;
+  }
+
+  const last = rows[rows.length - 1];
+  const recent = rows.slice(rows.length - lookback - 1, rows.length - 1);
+
+  if (direction === "bullish") {
+    const priorSwingLow = Math.min(...recent.map((item) => item.low));
+    const swept = last.low < priorSwingLow && last.close > priorSwingLow;
+    if (swept) {
+      return {
+        confirmed: true,
+        type: "bullish",
+        sweptLevel: Number(priorSwingLow.toFixed(2)),
+        note: "Downside liquidity sweep confirmed"
+      };
+    }
+  }
+
+  if (direction === "bearish") {
+    const priorSwingHigh = Math.max(...recent.map((item) => item.high));
+    const swept = last.high > priorSwingHigh && last.close < priorSwingHigh;
+    if (swept) {
+      return {
+        confirmed: true,
+        type: "bearish",
+        sweptLevel: Number(priorSwingHigh.toFixed(2)),
+        note: "Upside liquidity sweep confirmed"
+      };
+    }
+  }
+
+  return {
+    confirmed: false,
+    type: direction,
+    sweptLevel: null,
+    note: "No clear sweep confirmation"
+  };
+}
+
 function findOrderBlocks(rows, impulseThreshold = 1.5, lookback = 20, searchBack = 6) {
   if (rows.length < lookback + 10) {
     return [];
@@ -341,6 +397,77 @@ function scoreMatch(distancePct, timeframe, divergence) {
   return Math.max(0, 5 - distancePct) * timeframeWeight + divergenceBonus;
 }
 
+function nearestOpposingTarget(rows, direction, lookback = 30, level = 1) {
+  const recent = rows.slice(-lookback);
+  if (!recent.length) {
+    return null;
+  }
+
+  const sorted = direction === "bullish"
+    ? [...recent].sort((a, b) => b.high - a.high)
+    : [...recent].sort((a, b) => a.low - b.low);
+
+  const chosen = sorted[Math.min(level - 1, sorted.length - 1)];
+  return direction === "bullish" ? chosen.high : chosen.low;
+}
+
+function buildTradePlan({ direction, zoneLow, zoneHigh, currentPrice, rows }) {
+  const zoneWidth = Math.max(0.01, zoneHigh - zoneLow);
+  const buffer = Math.max(zoneWidth * 0.12, currentPrice * 0.0025);
+
+  if (direction === "bullish") {
+    const entry = zoneHigh;
+    const stopLoss = zoneLow - buffer;
+    const takeProfit1 = nearestOpposingTarget(rows, direction, 25, 1) || entry + zoneWidth * 2;
+    const takeProfit2 = nearestOpposingTarget(rows, direction, 50, 2) || entry + zoneWidth * 4;
+    const risk = Math.max(0.01, entry - stopLoss);
+    return {
+      entry: Number(entry.toFixed(2)),
+      stopLoss: Number(stopLoss.toFixed(2)),
+      takeProfit1: Number(Math.max(takeProfit1, entry + zoneWidth).toFixed(2)),
+      takeProfit2: Number(Math.max(takeProfit2, takeProfit1).toFixed(2)),
+      riskReward1: Number(((Math.max(takeProfit1, entry) - entry) / risk).toFixed(2)),
+      riskReward2: Number(((Math.max(takeProfit2, entry) - entry) / risk).toFixed(2))
+    };
+  }
+
+  const entry = zoneLow;
+  const stopLoss = zoneHigh + buffer;
+  const takeProfit1 = nearestOpposingTarget(rows, direction, 25, 1) || entry - zoneWidth * 2;
+  const takeProfit2 = nearestOpposingTarget(rows, direction, 50, 2) || entry - zoneWidth * 4;
+  const risk = Math.max(0.01, stopLoss - entry);
+  return {
+    entry: Number(entry.toFixed(2)),
+    stopLoss: Number(stopLoss.toFixed(2)),
+    takeProfit1: Number(Math.min(takeProfit1, entry - zoneWidth).toFixed(2)),
+    takeProfit2: Number(Math.min(takeProfit2, takeProfit1).toFixed(2)),
+    riskReward1: Number(((entry - Math.min(takeProfit1, entry)) / risk).toFixed(2)),
+    riskReward2: Number(((entry - Math.min(takeProfit2, entry)) / risk).toFixed(2))
+  };
+}
+
+function classifyTradeQuality(match) {
+  const divergenceAligned = match.divergence && match.divergence === match.direction;
+  const inZone = match.insideZone === "yes";
+  const strongRR = match.riskReward1 >= 2;
+  const strongConfluence = match.matchedTimeframes >= 2;
+  const sweepConfirmed = match.liquiditySweepConfirmed;
+
+  if (inZone && strongConfluence && divergenceAligned && strongRR && sweepConfirmed) {
+    return "S";
+  }
+  if (inZone && strongConfluence && divergenceAligned && strongRR) {
+    return "A+";
+  }
+  if ((inZone || match.distancePct <= 0.5) && (strongConfluence || divergenceAligned)) {
+    return "A";
+  }
+  if (match.distancePct <= 1.2 || strongConfluence) {
+    return "B";
+  }
+  return "Watch";
+}
+
 async function scanInstrument(symbol, options = {}) {
   const {
     displayName = symbol,
@@ -369,6 +496,14 @@ async function scanInstrument(symbol, options = {}) {
     zones.forEach((zone) => {
       const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
       if (distancePct <= proximity || insideZone === "yes") {
+        const liquiditySweep = detectLiquiditySweep(rows, zone.direction);
+        const tradePlan = buildTradePlan({
+          direction: zone.direction,
+          zoneLow: zone.zoneLow,
+          zoneHigh: zone.zoneHigh,
+          currentPrice,
+          rows
+        });
         const candidate = {
           symbol,
           name: displayName,
@@ -383,7 +518,22 @@ async function scanInstrument(symbol, options = {}) {
           insideZone,
           divergence: divergence?.type || null,
           formedAt: zone.formedAt,
-          score: Number(scoreMatch(distancePct, timeframe.name, divergence?.type).toFixed(2))
+          liquiditySweepConfirmed: liquiditySweep?.confirmed || false,
+          liquiditySweepNote: liquiditySweep?.note || "No sweep",
+          sweptLevel: liquiditySweep?.sweptLevel || null,
+          entry: tradePlan.entry,
+          stopLoss: tradePlan.stopLoss,
+          takeProfit1: tradePlan.takeProfit1,
+          takeProfit2: tradePlan.takeProfit2,
+          riskReward1: tradePlan.riskReward1,
+          riskReward2: tradePlan.riskReward2,
+          score: Number(
+            (
+              scoreMatch(distancePct, timeframe.name, divergence?.type) +
+              (liquiditySweep?.confirmed ? 1.5 : 0) +
+              Math.min(tradePlan.riskReward1, 3)
+            ).toFixed(2)
+          )
         };
         if (!best || candidate.distancePct < best.distancePct) {
           best = candidate;
@@ -435,6 +585,14 @@ async function scanUniverse(symbols, options = {}) {
       }));
     })
     .flat()
+    .map((item) => {
+      const tradeQuality = classifyTradeQuality(item);
+      return {
+        ...item,
+        tradeQuality,
+        qualityRank: QUALITY_RANK[tradeQuality] || 0
+      };
+    })
     .sort((a, b) => {
       if (b.matchedTimeframes !== a.matchedTimeframes) return b.matchedTimeframes - a.matchedTimeframes;
       if (a.insideZone !== b.insideZone) return a.insideZone === "yes" ? -1 : 1;
@@ -486,10 +644,16 @@ export default async (request) => {
         if (!best) {
           return null;
         }
+        const tradeQuality = classifyTradeQuality({
+          ...best,
+          matchedTimeframes: matches.length
+        });
         return {
           ...best,
           sourceSymbol: indexInstrument.sourceSymbol,
-          matchedTimeframes: matches.length
+          matchedTimeframes: matches.length,
+          tradeQuality,
+          qualityRank: QUALITY_RANK[tradeQuality] || 0
         };
       })
     );

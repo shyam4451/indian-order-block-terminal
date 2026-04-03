@@ -287,25 +287,73 @@ body::before {
   flex-wrap: wrap;
 }
 
+.filter-bar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.mini-control {
+  display: grid;
+  gap: 7px;
+}
+
+.mini-control span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.mini-control select {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #0b1520;
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 12px;
+  font: inherit;
+  outline: none;
+}
+
 .legend-pill.bullish,
-.badge.bullish {
+.badge.bullish,
+.chip.bullish {
   color: var(--accent);
   background: var(--accent-soft);
   border-color: rgba(44, 230, 179, 0.24);
 }
 
 .legend-pill.bearish,
-.badge.bearish {
+.badge.bearish,
+.chip.bearish {
   color: var(--danger);
   background: var(--danger-soft);
   border-color: rgba(255, 111, 127, 0.24);
 }
 
 .legend-pill.neutral,
-.badge.neutral {
+.badge.neutral,
+.chip.neutral {
   color: var(--warning);
   background: rgba(255, 191, 105, 0.12);
   border-color: rgba(255, 191, 105, 0.24);
+}
+
+.legend-pill.s-tier,
+.badge.s-tier,
+.chip.s-tier {
+  color: #8fd3ff;
+  background: rgba(75, 159, 255, 0.14);
+  border-color: rgba(75, 159, 255, 0.24);
+}
+
+.badge.muted,
+.chip.muted {
+  color: var(--neutral);
+  background: rgba(159, 176, 196, 0.1);
+  border-color: rgba(159, 176, 196, 0.18);
 }
 
 .table-wrap {
@@ -349,6 +397,10 @@ td {
 
 tbody tr:hover {
   background: rgba(255, 255, 255, 0.03);
+}
+
+.interactive-row {
+  cursor: pointer;
 }
 
 .stock-cell {
@@ -411,6 +463,18 @@ tbody tr:hover {
   background: rgba(120, 165, 220, 0.12);
   color: #cfe3fd;
   border: 1px solid rgba(120, 165, 220, 0.2);
+  font-weight: 700;
+}
+
+.plan-cell {
+  display: grid;
+  gap: 5px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.plan-cell span:first-child {
+  color: var(--text);
   font-weight: 700;
 }
 
@@ -512,6 +576,10 @@ tbody tr:hover {
   .indices-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .filter-bar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1160px) {
@@ -520,6 +588,10 @@ tbody tr:hover {
   }
 
   .metrics-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filter-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -532,6 +604,10 @@ tbody tr:hover {
 
   .metrics-row,
   .indices-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-bar {
     grid-template-columns: 1fr;
   }
 
