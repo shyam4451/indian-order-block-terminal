@@ -15,7 +15,6 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
-    <script src="https://s3.tradingview.com/tv.js"></script>
   </head>
   <body>
     <div class="terminal-shell">
@@ -77,8 +76,9 @@
             <span class="chip">Daily</span>
             <span class="chip">Weekly</span>
             <span class="chip">RSI Divergence</span>
-            <span class="chip">TradingView</span>
-            <span class="chip">NIFTY Futures</span>
+            <span class="chip">Live Tape</span>
+            <span class="chip">Sector Sentiment</span>
+            <span class="chip">News Flow</span>
           </div>
         </div>
       </aside>
@@ -90,8 +90,17 @@
             <h2>Institutional Zone Monitor</h2>
             <p id="scanMeta" class="subtle-text">No scan yet.</p>
           </div>
-          <div class="topbar-actions">
-            <a id="chartLink" class="ghost-button" href="#" target="_blank" rel="noreferrer">Open Active Chart</a>
+          <div id="marketTape" class="market-tape">
+            <article class="tape-card">
+              <span class="label">NIFTY 50</span>
+              <strong>--</strong>
+              <small>--</small>
+            </article>
+            <article class="tape-card">
+              <span class="label">SENSEX</span>
+              <strong>--</strong>
+              <small>--</small>
+            </article>
           </div>
         </header>
 
@@ -208,26 +217,70 @@
                     <th>R:R</th>
                     <th>Quality</th>
                     <th>Score</th>
-                    <th>Chart</th>
                   </tr>
                 </thead>
                 <tbody id="stocksBody">
                   <tr>
-                    <td colspan="13" class="empty-state">Run a scan to populate the terminal.</td>
+                    <td colspan="12" class="empty-state">Run a scan to populate the terminal.</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </section>
 
+          <section class="intel-panel">
+            <section class="news-panel panel-card">
+              <div class="panel-head">
+                <div>
+                  <p class="card-label">News Flow</p>
+                  <h3>Stocks In Focus</h3>
+                </div>
+              </div>
+              <div id="newsFeed" class="news-feed">
+                <article class="news-card skeleton-card"></article>
+                <article class="news-card skeleton-card"></article>
+                <article class="news-card skeleton-card"></article>
+              </div>
+            </section>
+
+            <section class="sector-panel panel-card">
+              <div class="panel-head">
+                <div>
+                  <p class="card-label">Sector Pulse</p>
+                  <h3>Sector Sentiment Score</h3>
+                </div>
+              </div>
+              <div id="sectorSentiment" class="sector-list">
+                <div class="empty-state">Sector sentiment will appear after the scan.</div>
+              </div>
+            </section>
+          </section>
+
           <section class="chart-panel panel-card">
             <div class="panel-head">
               <div>
-                <p class="card-label">Inspection</p>
-                <h3 id="chartTitle">TradingView inspection panel</h3>
+                <p class="card-label">Trade Model</p>
+                <h3>How To Read This Terminal</h3>
               </div>
             </div>
-            <div id="chartContainer" class="chart-container"></div>
+            <div class="guide-grid">
+              <div class="guide-item">
+                <span class="label">Bias</span>
+                <p>Bullish or bearish direction from the detected order block.</p>
+              </div>
+              <div class="guide-item">
+                <span class="label">Liquidity</span>
+                <p>`sweep` means recent highs or lows were taken before price reclaimed the zone.</p>
+              </div>
+              <div class="guide-item">
+                <span class="label">Trade Quality</span>
+                <p>`S` tier requires zone alignment, confluence, R:R, divergence support, and liquidity sweep confirmation.</p>
+              </div>
+              <div class="guide-item">
+                <span class="label">Plan</span>
+                <p>Each row shows a model Entry, Stop Loss, TP1, TP2, and approximate risk/reward.</p>
+              </div>
+            </div>
           </section>
         </section>
 

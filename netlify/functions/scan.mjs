@@ -66,6 +66,22 @@ const QUALITY_RANK = {
   Watch: 1
 };
 
+const MARKET_TAPE_SYMBOLS = [
+  { name: "NIFTY 50", symbol: "^NSEI" },
+  { name: "SENSEX", symbol: "^BSESN" }
+];
+
+const SECTOR_MAP = {
+  Banking: ["HDFCBANK", "ICICIBANK", "SBIN", "AXISBANK", "KOTAKBANK", "INDUSINDBK", "SBILIFE", "HDFCLIFE"],
+  IT: ["INFY", "TCS", "HCLTECH", "TECHM", "WIPRO"],
+  Energy: ["RELIANCE", "ONGC", "BPCL", "COALINDIA", "POWERGRID", "NTPC"],
+  Pharma: ["SUNPHARMA", "CIPLA", "DRREDDY", "APOLLOHOSP"],
+  Metals: ["TATASTEEL", "JSWSTEEL", "HINDALCO", "GRASIM"],
+  Auto: ["MARUTI", "TATAMOTORS", "BAJAJ-AUTO", "EICHERMOT", "HEROMOTOCO", "M&M"],
+  Consumer: ["HINDUNILVR", "ITC", "NESTLEIND", "BRITANNIA", "TATACONSUM", "ASIANPAINT", "TITAN", "TRENT"],
+  Industrials: ["LT", "ADANIPORTS", "ADANIENT", "ULTRACEMCO", "BEL"]
+};
+
 function csvToRows(text) {
   const [headerLine, ...lines] = text.trim().split(/\r?\n/);
   const headers = headerLine.split(",").map((item) => item.trim().replace(/^"|"$/g, ""));
@@ -136,6 +152,99 @@ async function fetchYahooCandles(symbol, interval, range) {
   });
 
   return rows;
+}
+
+async function fetchYahooQuote(symbol) {
+  const rows = await fetchYahooCandles(symbol, "1d", "5d");
+  if (rows.length < 2) {
+    return null;
+  }
+  const last = rows[rows.length - 1];
+  const previous = rows[rows.length - 2];
+  const change = last.close - previous.close;
+  const changePct = previous.close ? (change / previous.close) * 100 : 0;
+
+  return {
+    symbol,
+    price: Number(last.close.toFixed(2)),
+    change: Number(change.toFixed(2)),
+    changePct: Number(changePct.toFixed(2))
+  };
+}
+
+async function fetchMarketTape() {
+  const results = await Promise.allSettled(
+    MARKET_TAPE_SYMBOLS.map(async (item) => {
+      const quote = await fetchYahooQuote(item.symbol);
+      if (!quote) {
+        return null;
+      }
+      return {
+        name: item.name,
+        ...quote
+      };
+    })
+  );
+
+  return results
+    .filter((result) => result.status === "fulfilled" && result.value)
+    .map((result) => result.value);
+}
+
+function decodeXml(text) {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'");
+}
+
+async function fetchNewsItems(queries) {
+  const headlines = [];
+
+  for (const query of queries.slice(0, 4)) {
+    try {
+      const url = `https://news.google.com/rss/search?q=${encodeURIComponent(`${query} stock india`)}&hl=en-IN&gl=IN&ceid=IN:en`;
+      const response = await fetch(url, {
+        headers: { "user-agent": "Mozilla/5.0" }
+      });
+      if (!response.ok) {
+        continue;
+      }
+      const xml = await response.text();
+      const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 2);
+      items.forEach((match) => {
+        const block = match[1];
+        const title = decodeXml((block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/)?.[1] || block.match(/<title>(.*?)<\/title>/)?.[1] || "").trim());
+        const link = decodeXml((block.match(/<link>(.*?)<\/link>/)?.[1] || "").trim());
+        const pubDate = decodeXml((block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || "").trim());
+        if (title && link) {
+          headlines.push({
+            title: title.replace(/\s+-\s+[^-]+$/, ""),
+            link,
+            sourceQuery: query,
+            pubDate
+          });
+        }
+      });
+    } catch (_error) {
+      // Ignore news failures so the scanner never goes down over headlines.
+    }
+  }
+
+  const unique = [];
+  const seen = new Set();
+  headlines.forEach((item) => {
+    const key = item.title.toLowerCase();
+    if (seen.has(key) || unique.length >= 6) {
+      return;
+    }
+    seen.add(key);
+    unique.push(item);
+  });
+
+  return unique;
 }
 
 function buildSynthetic4H(rows) {
@@ -609,6 +718,42 @@ function getUniverseLabel(universe) {
   }[universe] || "Custom";
 }
 
+function sectorFromSymbol(symbol) {
+  const root = symbol.replace(".NS", "").replace(/^\^/, "");
+  return Object.entries(SECTOR_MAP).find(([, items]) => items.includes(root))?.[0] || "Other";
+}
+
+function computeSectorSentiment(rows) {
+  const grouped = new Map();
+
+  rows.forEach((row) => {
+    const sector = sectorFromSymbol(row.symbol);
+    const existing = grouped.get(sector) || [];
+    existing.push(row);
+    grouped.set(sector, existing);
+  });
+
+  return [...grouped.entries()]
+    .map(([sector, items]) => {
+      const bullishCount = items.filter((item) => item.direction === "bullish").length;
+      const bearishCount = items.filter((item) => item.direction === "bearish").length;
+      const avgScore = items.reduce((sum, item) => sum + item.score, 0) / items.length;
+      const avgRR = items.reduce((sum, item) => sum + item.riskReward1, 0) / items.length;
+      const sentimentScore = Number((((bullishCount - bearishCount) / items.length) * 50 + avgScore * 5).toFixed(1));
+      return {
+        sector,
+        sentimentScore,
+        bullishCount,
+        bearishCount,
+        avgScore: Number(avgScore.toFixed(2)),
+        avgRR: Number(avgRR.toFixed(2)),
+        topQuality: items.sort((a, b) => b.qualityRank - a.qualityRank || b.score - a.score)[0]?.tradeQuality || "Watch"
+      };
+    })
+    .filter((item) => item.sector !== "Other")
+    .sort((a, b) => b.sentimentScore - a.sentimentScore);
+}
+
 export default async (request) => {
   try {
     const url = new URL(request.url);
@@ -630,7 +775,7 @@ export default async (request) => {
     const stocks = await scanUniverse(stockSymbols, { proximity, impulse });
     const filteredStocks = stocks.filter((row) => row.matchedTimeframes >= minTimeframes);
 
-    const indexResults = await Promise.all(
+    const indexResults = await Promise.allSettled(
       INDEX_INSTRUMENTS.map(async (indexInstrument) => {
         const matches = await scanInstrument(indexInstrument.sourceSymbol, {
           displayName: indexInstrument.name,
@@ -658,10 +803,23 @@ export default async (request) => {
       })
     );
 
+    const marketTape = await fetchMarketTape();
+    const sectorSentiment = computeSectorSentiment(filteredStocks);
+    const newsQueries = [
+      ...filteredStocks.slice(0, 4).map((item) => item.symbol.replace(".NS", "")),
+      "Nifty 50"
+    ];
+    const news = await fetchNewsItems(newsQueries);
+
     const payload = {
       generatedAt: new Date().toISOString(),
       stocks: filteredStocks,
-      indices: indexResults.filter(Boolean),
+      indices: indexResults
+        .filter((result) => result.status === "fulfilled" && result.value)
+        .map((result) => result.value),
+      marketTape,
+      news,
+      sectorSentiment,
       meta: {
         scannedSymbols: stockSymbols.length,
         bullishDivergences: filteredStocks.filter((item) => item.divergenceBias === "bullish").length,

@@ -250,6 +250,38 @@ body::before {
   align-items: center;
 }
 
+.market-tape {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tape-card {
+  min-width: 160px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tape-card .label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  margin-bottom: 6px;
+}
+
+.tape-card strong {
+  display: block;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.15rem;
+}
+
+.tape-card small {
+  display: block;
+  margin-top: 4px;
+}
+
 .metrics-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -269,7 +301,12 @@ body::before {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(400px, 0.95fr);
+  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.95fr);
+  gap: 18px;
+}
+
+.intel-panel {
+  display: grid;
   gap: 18px;
 }
 
@@ -486,6 +523,33 @@ tbody tr:hover {
   background: #050b10;
 }
 
+.guide-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.guide-item {
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.guide-item .label,
+.sector-stats strong,
+.news-tag {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.guide-item p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .indices-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -539,6 +603,48 @@ tbody tr:hover {
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 12px;
+}
+
+.news-feed,
+.sector-list {
+  display: grid;
+  gap: 12px;
+}
+
+.news-card,
+.sector-card {
+  display: block;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  text-decoration: none;
+  color: var(--text);
+}
+
+.news-card h4 {
+  margin: 8px 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.news-card small {
+  color: var(--muted);
+}
+
+.sector-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.sector-stats {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .empty-state {
