@@ -32,6 +32,21 @@ function formatNumber(value, digits = 2) {
   });
 }
 
+function formatDate(value) {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
 function chartUrl(symbol) {
   return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`;
 }
@@ -70,18 +85,36 @@ function makeChip(label, className = "") {
 function stockRowMarkup(row) {
   const divergence = row.divergence || "none";
   const tvSymbol = row.tvSymbol || `NSE:${row.symbol.replace(".NS", "")}`;
+  const biasClass = row.direction === "bullish" ? "bullish" : "bearish";
+  const divergenceClass = divergence === "bullish" ? "bullish" : divergence === "bearish" ? "bearish" : "neutral";
+  const distanceClass = row.insideZone === "yes" ? "inside-yes" : "inside-no";
   return `
     <tr>
-      <td><strong>${row.symbol}</strong></td>
-      <td>${row.timeframe}</td>
-      <td class="bias-${row.direction}">${row.direction}</td>
-      <td>${formatNumber(row.currentPrice)}</td>
-      <td>${formatNumber(row.zoneLow)} - ${formatNumber(row.zoneHigh)}</td>
-      <td class="inside-${row.insideZone}">${formatNumber(row.distancePct)}%</td>
-      <td class="div-${divergence}">${divergence}</td>
-      <td>${formatNumber(row.score)}</td>
       <td>
-        <a class="link-button" href="${chartUrl(tvSymbol)}" target="_blank" rel="noreferrer" data-chart-symbol="${tvSymbol}" data-chart-title="${row.symbol} chart">
+        <div class="stock-cell">
+          <span class="stock-symbol">${row.symbol}</span>
+          <span class="stock-subline">${row.matchedTimeframes} timeframes aligned</span>
+        </div>
+      </td>
+      <td>${row.timeframe}</td>
+      <td><span class="badge ${biasClass}">${row.direction}</span></td>
+      <td>${formatNumber(row.currentPrice)}</td>
+      <td>
+        <div class="zone-cell">
+          <span class="zone-range">${formatNumber(row.zoneLow)} - ${formatNumber(row.zoneHigh)}</span>
+          <span class="zone-date">Formed ${formatDate(row.formedAt)}</span>
+        </div>
+      </td>
+      <td>
+        <div class="distance-cell">
+          <span class="distance-value ${distanceClass}">${formatNumber(row.distancePct)}%</span>
+          <span class="distance-state ${distanceClass}">${row.insideZone === "yes" ? "inside zone" : "near zone"}</span>
+        </div>
+      </td>
+      <td><span class="badge ${divergenceClass}">${divergence}</span></td>
+      <td><span class="score-pill">${formatNumber(row.score)}</span></td>
+      <td>
+        <a class="mini-link" href="${chartUrl(tvSymbol)}" target="_blank" rel="noreferrer" data-chart-symbol="${tvSymbol}" data-chart-title="${row.symbol} chart">
           View
         </a>
       </td>
@@ -91,22 +124,41 @@ function stockRowMarkup(row) {
 
 function indexCardMarkup(item) {
   const divergence = item.divergence || "none";
+  const biasClass = item.direction === "bullish" ? "bullish" : "bearish";
+  const divergenceClass = divergence === "bullish" ? "bullish" : divergence === "bearish" ? "bearish" : "neutral";
   return `
     <article class="index-card">
-      <h3>${item.name}</h3>
-      <div class="index-meta">
-        ${makeChip(item.direction || "watch", `bias-${item.direction || "bullish"}`)}
-        ${makeChip(item.timeframe || "multi-timeframe")}
-        ${makeChip(`RSI ${divergence}`, `div-${divergence}`)}
+      <div class="index-header">
+        <h3>${item.name}</h3>
+        <span class="badge ${biasClass}">${item.direction || "watch"}</span>
       </div>
-      <p class="index-stat">Spot/index source: ${item.sourceSymbol}</p>
-      <p class="index-stat">Current: ${formatNumber(item.currentPrice)} | Zone: ${formatNumber(item.zoneLow)} - ${formatNumber(item.zoneHigh)}</p>
-      <p class="index-stat">Distance: ${formatNumber(item.distancePct)}% | Matches: ${item.matchedTimeframes}</p>
+      <div class="chip-grid">
+        ${makeChip(item.timeframe || "multi-timeframe")}
+        ${makeChip(`RSI ${divergence}`, divergenceClass)}
+      </div>
+      <div class="index-grid">
+        <div>
+          <span class="label">Current</span>
+          <span class="value">${formatNumber(item.currentPrice)}</span>
+        </div>
+        <div>
+          <span class="label">Distance</span>
+          <span class="value ${item.insideZone === "yes" ? "inside-yes" : "inside-no"}">${formatNumber(item.distancePct)}%</span>
+        </div>
+        <div>
+          <span class="label">Order Block</span>
+          <span class="value">${formatNumber(item.zoneLow)} - ${formatNumber(item.zoneHigh)}</span>
+        </div>
+        <div>
+          <span class="label">Source</span>
+          <span class="value">${item.sourceSymbol}</span>
+        </div>
+      </div>
       <div class="index-links">
-        <a class="link-button" href="${chartUrl(item.tvSymbol)}" target="_blank" rel="noreferrer" data-chart-symbol="${item.tvSymbol}" data-chart-title="${item.name} futures chart">
+        <a class="mini-link" href="${chartUrl(item.tvSymbol)}" target="_blank" rel="noreferrer" data-chart-symbol="${item.tvSymbol}" data-chart-title="${item.name} futures chart">
           Futures Chart
         </a>
-        <a class="link-button" href="${chartUrl(item.cashTvSymbol)}" target="_blank" rel="noreferrer">
+        <a class="mini-link" href="${chartUrl(item.cashTvSymbol)}" target="_blank" rel="noreferrer">
           Cash Index
         </a>
       </div>

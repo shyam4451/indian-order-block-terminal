@@ -6,56 +6,36 @@
     <title>Order Block Terminal India</title>
     <meta
       name="description"
-      content="Scan Indian stocks and major index futures for 4H, Daily, and Weekly order-block proximity with RSI divergence signals."
+      content="Professional Indian market terminal for higher-timeframe order blocks, RSI divergence, and TradingView-linked stock and index workflows."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://s3.tradingview.com/tv.js"></script>
   </head>
   <body>
-    <div class="page-shell">
-      <header class="hero">
-        <div class="hero-copy">
-          <p class="eyebrow">Indian Market Scanner</p>
-          <h1>Find stocks and index setups sitting at higher-timeframe order blocks.</h1>
-          <p class="hero-text">
-            This website scans Indian equities plus key index setups for futures traders, checks 4H, Daily, and
-            Weekly order-block proximity, and layers RSI divergence on top.
+    <div class="terminal-shell">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-mark">OB</div>
+          <div>
+            <p class="eyebrow">Client Terminal</p>
+            <h1>Order Block India</h1>
+          </div>
+        </div>
+
+        <div class="sidebar-card">
+          <p class="card-label">Scanner</p>
+          <h2>Live Market Filters</h2>
+          <p class="sidebar-copy">
+            Multi-timeframe scanning for Indian stocks and futures-oriented index workflows.
           </p>
-          <div class="hero-pills">
-            <span>4H / Daily / Weekly</span>
-            <span>NSE stocks</span>
-            <span>Index futures focus</span>
-            <span>TradingView charts</span>
-          </div>
-        </div>
-        <div class="hero-panel glass-card">
-          <p class="panel-label">What this version does</p>
-          <ul class="feature-list">
-            <li>Automatically discovers NSE cash-market stocks from the official NSE security list</li>
-            <li>Scans a stock universe or a faster liquid preset</li>
-            <li>Includes a dedicated section for NIFTY, BANKNIFTY, FINNIFTY, and MIDCPNIFTY-style workflows</li>
-            <li>Lets you open the selected setup directly in TradingView</li>
-          </ul>
-        </div>
-      </header>
 
-      <main class="dashboard-grid">
-        <section class="controls-section glass-card">
-          <div class="section-head">
-            <div>
-              <p class="section-kicker">Scanner Controls</p>
-              <h2>Run a fresh scan</h2>
-            </div>
-            <button id="scanButton" class="primary-button">Run Scan</button>
-          </div>
-
-          <div class="controls-grid">
+          <div class="controls-stack">
             <label class="control">
               <span>Universe</span>
               <select id="universe">
@@ -71,7 +51,7 @@
             </label>
 
             <label class="control">
-              <span>Max distance from zone (%)</span>
+              <span>Distance from zone (%)</span>
               <input id="proximity" type="number" min="0.1" max="5" step="0.1" value="1" />
             </label>
 
@@ -81,95 +61,130 @@
             </label>
 
             <label class="control">
-              <span>Minimum matching timeframes</span>
+              <span>Min matching timeframes</span>
               <input id="minTimeframes" type="number" min="1" max="3" value="1" />
             </label>
           </div>
 
-          <p class="fine-print">
-            For hosting on Netlify, the faster presets are the best default. Full NSE scans can be heavier because
-            serverless functions have time limits.
-          </p>
-        </section>
+          <button id="scanButton" class="primary-button">Run Market Scan</button>
+          <p class="helper-text">Best for hosted speed: start with `Nifty 50` or `Liquid F&O stocks`.</p>
+        </div>
 
-        <section class="metrics-section">
-          <article class="metric-card glass-card">
-            <span class="metric-label">Scanned</span>
+        <div class="sidebar-card muted-card">
+          <p class="card-label">Coverage</p>
+          <div class="chip-grid">
+            <span class="chip">4H</span>
+            <span class="chip">Daily</span>
+            <span class="chip">Weekly</span>
+            <span class="chip">RSI Divergence</span>
+            <span class="chip">TradingView</span>
+            <span class="chip">NIFTY Futures</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar panel-card">
+          <div>
+            <p class="card-label">Market Overview</p>
+            <h2>Institutional Zone Monitor</h2>
+            <p id="scanMeta" class="subtle-text">No scan yet.</p>
+          </div>
+          <div class="topbar-actions">
+            <a id="chartLink" class="ghost-button" href="#" target="_blank" rel="noreferrer">Open Active Chart</a>
+          </div>
+        </header>
+
+        <section class="metrics-row">
+          <article class="metric-card panel-card">
+            <span class="metric-label">Universe Scanned</span>
             <strong id="metricScanned">-</strong>
+            <small>Symbols processed in the latest run</small>
           </article>
-          <article class="metric-card glass-card">
-            <span class="metric-label">Matches</span>
+          <article class="metric-card panel-card">
+            <span class="metric-label">Actionable Matches</span>
             <strong id="metricMatches">-</strong>
+            <small>Stocks currently near or inside HTF zones</small>
           </article>
-          <article class="metric-card glass-card">
-            <span class="metric-label">Bullish RSI Divs</span>
+          <article class="metric-card panel-card">
+            <span class="metric-label">Bullish Divergences</span>
             <strong id="metricBullish">-</strong>
+            <small>Detected in the displayed stock results</small>
           </article>
-          <article class="metric-card glass-card">
+          <article class="metric-card panel-card">
             <span class="metric-label">Index Futures</span>
             <strong id="metricIndices">-</strong>
+            <small>Tracked index instruments on the dashboard</small>
           </article>
         </section>
 
-        <section class="table-section glass-card">
-          <div class="section-head">
-            <div>
-              <p class="section-kicker">Stocks</p>
-              <h2>Automatic stock findings</h2>
+        <section class="workspace-grid">
+          <section class="table-panel panel-card">
+            <div class="panel-head">
+              <div>
+                <p class="card-label">Stocks Terminal</p>
+                <h3>Automatic Setup Feed</h3>
+              </div>
+              <div class="legend">
+                <span class="legend-pill bullish">Bullish</span>
+                <span class="legend-pill bearish">Bearish</span>
+                <span class="legend-pill neutral">Near Zone</span>
+              </div>
             </div>
-            <p id="scanMeta" class="scan-meta">No scan yet.</p>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Symbol</th>
-                  <th>TF</th>
-                  <th>Bias</th>
-                  <th>Price</th>
-                  <th>Zone</th>
-                  <th>Distance</th>
-                  <th>RSI Div</th>
-                  <th>Score</th>
-                  <th>Chart</th>
-                </tr>
-              </thead>
-              <tbody id="stocksBody">
-                <tr>
-                  <td colspan="9" class="empty-state">Run a scan to load stock setups.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Instrument</th>
+                    <th>TF</th>
+                    <th>Bias</th>
+                    <th>Last</th>
+                    <th>Order Block</th>
+                    <th>Distance</th>
+                    <th>Divergence</th>
+                    <th>Score</th>
+                    <th>Chart</th>
+                  </tr>
+                </thead>
+                <tbody id="stocksBody">
+                  <tr>
+                    <td colspan="9" class="empty-state">Run a scan to populate the terminal.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="chart-panel panel-card">
+            <div class="panel-head">
+              <div>
+                <p class="card-label">Inspection</p>
+                <h3 id="chartTitle">TradingView inspection panel</h3>
+              </div>
+            </div>
+            <div id="chartContainer" class="chart-container"></div>
+          </section>
         </section>
 
-        <section class="indices-section glass-card">
-          <div class="section-head">
+        <section class="indices-panel panel-card">
+          <div class="panel-head">
             <div>
-              <p class="section-kicker">Index Futures</p>
-              <h2>Major index setups for futures traders</h2>
+              <p class="card-label">Index Desk</p>
+              <h3>Futures-Oriented Index Watchlist</h3>
             </div>
-            <p class="scan-meta">Signals are derived from index data, with TradingView links pointing to futures-friendly charts.</p>
+            <p class="subtle-text">Built for NIFTY, BANKNIFTY, FINNIFTY, and MIDCPNIFTY-style review.</p>
           </div>
           <div id="indicesGrid" class="indices-grid">
             <article class="index-card skeleton-card"></article>
             <article class="index-card skeleton-card"></article>
+            <article class="index-card skeleton-card"></article>
+            <article class="index-card skeleton-card"></article>
           </div>
-        </section>
-
-        <section class="chart-section glass-card">
-          <div class="section-head">
-            <div>
-              <p class="section-kicker">Chart</p>
-              <h2 id="chartTitle">TradingView inspection panel</h2>
-            </div>
-            <a id="chartLink" class="link-button" href="#" target="_blank" rel="noreferrer">Open in TradingView</a>
-          </div>
-          <div id="chartContainer" class="chart-container"></div>
         </section>
       </main>
     </div>
 
     <script type="module" src="./web/app.js"></script>
   </body>
-  </html>
+</html>
