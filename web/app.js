@@ -15,6 +15,13 @@ const elements = {
   marketTape: document.getElementById("marketTape"),
   newsFeed: document.getElementById("newsFeed"),
   sectorSentiment: document.getElementById("sectorSentiment"),
+  backtestNote: document.getElementById("backtestNote"),
+  btSignals: document.getElementById("btSignals"),
+  btResolved: document.getElementById("btResolved"),
+  btWinRate: document.getElementById("btWinRate"),
+  btExpectancy: document.getElementById("btExpectancy"),
+  backtestTimeframes: document.getElementById("backtestTimeframes"),
+  backtestQuality: document.getElementById("backtestQuality"),
   biasFilter: document.getElementById("biasFilter"),
   divergenceFilter: document.getElementById("divergenceFilter"),
   zoneFilter: document.getElementById("zoneFilter"),
@@ -247,6 +254,22 @@ function sectorCardMarkup(item) {
   `;
 }
 
+function analyticsRowMarkup(item, labelKey) {
+  return `
+    <article class="analytics-row">
+      <div>
+        <strong>${item[labelKey]}</strong>
+        <small>${item.totalSignals} signals</small>
+      </div>
+      <div class="analytics-values">
+        <span>WR <strong>${formatNumber(item.winRate, 1)}%</strong></span>
+        <span>EXP <strong>${formatNumber(item.expectancy, 2)}R</strong></span>
+        <span>TP2 <strong>${formatNumber(item.tp2Rate, 1)}%</strong></span>
+      </div>
+    </article>
+  `;
+}
+
 function renderStocks(rows) {
   if (!rows.length) {
     elements.stocksBody.innerHTML = '<tr><td colspan="12" class="empty-state">No setups matched the current filters.</td></tr>';
@@ -296,6 +319,29 @@ function renderMetrics(payload, filteredStocks) {
   elements.scanMeta.textContent = `Updated ${new Date(payload.generatedAt).toLocaleString("en-IN")} | Universe: ${payload.meta.universeLabel}`;
 }
 
+function renderBacktest(backtest) {
+  if (!backtest || !backtest.overall) {
+    elements.backtestNote.textContent = "Backtest summary will appear after the scan.";
+    elements.backtestTimeframes.innerHTML = '<div class="empty-state">Waiting for backtest data.</div>';
+    elements.backtestQuality.innerHTML = '<div class="empty-state">Waiting for backtest data.</div>';
+    return;
+  }
+
+  elements.backtestNote.textContent = `${backtest.note} Sample size: ${backtest.sampleSymbols} symbols.`;
+  elements.btSignals.textContent = backtest.overall.totalSignals;
+  elements.btResolved.textContent = backtest.overall.resolvedTrades;
+  elements.btWinRate.textContent = `${formatNumber(backtest.overall.winRate, 1)}%`;
+  elements.btExpectancy.textContent = `${formatNumber(backtest.overall.expectancy, 2)}R`;
+
+  elements.backtestTimeframes.innerHTML = backtest.byTimeframe.length
+    ? backtest.byTimeframe.map((item) => analyticsRowMarkup(item, "timeframe")).join("")
+    : '<div class="empty-state">No timeframe data available.</div>';
+
+  elements.backtestQuality.innerHTML = backtest.byQuality.length
+    ? backtest.byQuality.map((item) => analyticsRowMarkup(item, "quality")).join("")
+    : '<div class="empty-state">No quality data available.</div>';
+}
+
 function refreshView() {
   if (!state.latestPayload) {
     return;
@@ -307,6 +353,7 @@ function refreshView() {
   renderTape(state.latestPayload.marketTape || []);
   renderNews(state.latestPayload.news || []);
   renderSectorSentiment(state.latestPayload.sectorSentiment || []);
+  renderBacktest(state.latestPayload.backtest);
 }
 
 async function runScan() {
@@ -336,6 +383,8 @@ async function runScan() {
     elements.indicesGrid.innerHTML = '<div class="empty-state">Could not load indices right now.</div>';
     elements.newsFeed.innerHTML = '<div class="empty-state">Could not load news right now.</div>';
     elements.sectorSentiment.innerHTML = '<div class="empty-state">Could not load sector sentiment right now.</div>';
+    elements.backtestTimeframes.innerHTML = '<div class="empty-state">Could not load backtest data right now.</div>';
+    elements.backtestQuality.innerHTML = '<div class="empty-state">Could not load backtest data right now.</div>';
   } finally {
     elements.scanButton.disabled = false;
     elements.scanButton.textContent = "Run Market Scan";

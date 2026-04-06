@@ -299,6 +299,50 @@
             <article class="index-card skeleton-card"></article>
           </div>
         </section>
+
+        <section class="backtest-panel panel-card">
+          <div class="panel-head">
+            <div>
+              <p class="card-label">Backtest Lab</p>
+              <h3>Historical Probability Snapshot</h3>
+            </div>
+            <p id="backtestNote" class="subtle-text">Backtest summary will appear after the scan.</p>
+          </div>
+
+          <div class="backtest-grid">
+            <article class="metric-card mini-metric">
+              <span class="metric-label">Signals</span>
+              <strong id="btSignals">-</strong>
+            </article>
+            <article class="metric-card mini-metric">
+              <span class="metric-label">Resolved</span>
+              <strong id="btResolved">-</strong>
+            </article>
+            <article class="metric-card mini-metric">
+              <span class="metric-label">Win Rate</span>
+              <strong id="btWinRate">-</strong>
+            </article>
+            <article class="metric-card mini-metric">
+              <span class="metric-label">Expectancy</span>
+              <strong id="btExpectancy">-</strong>
+            </article>
+          </div>
+
+          <div class="backtest-tables">
+            <div>
+              <p class="card-label">By Timeframe</p>
+              <div id="backtestTimeframes" class="analytics-list">
+                <div class="empty-state">Waiting for backtest data.</div>
+              </div>
+            </div>
+            <div>
+              <p class="card-label">By Quality</p>
+              <div id="backtestQuality" class="analytics-list">
+                <div class="empty-state">Waiting for backtest data.</div>
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
 

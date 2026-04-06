@@ -292,6 +292,10 @@ body::before {
   min-height: 138px;
 }
 
+.mini-metric {
+  min-height: 110px;
+}
+
 .metric-card strong {
   display: block;
   margin: 12px 0 6px;
@@ -556,6 +560,53 @@ tbody tr:hover {
   gap: 14px;
 }
 
+.backtest-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.backtest-tables {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.analytics-list {
+  display: grid;
+  gap: 10px;
+}
+
+.analytics-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.analytics-row small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.analytics-values {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.analytics-values strong {
+  color: var(--text);
+}
+
 .index-card {
   padding: 16px;
   border: 1px solid var(--line);
@@ -686,6 +737,11 @@ tbody tr:hover {
   .filter-bar {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .backtest-grid,
+  .backtest-tables {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1160px) {
@@ -699,6 +755,14 @@ tbody tr:hover {
 
   .filter-bar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .backtest-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .backtest-tables {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -714,6 +778,10 @@ tbody tr:hover {
   }
 
   .filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .backtest-grid {
     grid-template-columns: 1fr;
   }
 

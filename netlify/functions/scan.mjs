@@ -82,6 +82,12 @@ const SECTOR_MAP = {
   Industrials: ["LT", "ADANIPORTS", "ADANIENT", "ULTRACEMCO", "BEL"]
 };
 
+const BACKTEST_BAR_LIMITS = {
+  "4H": 15,
+  Daily: 20,
+  Weekly: 12
+};
+
 function csvToRows(text) {
   const [headerLine, ...lines] = text.trim().split(/\r?\n/);
   const headers = headerLine.split(",").map((item) => item.trim().replace(/^"|"$/g, ""));
@@ -577,6 +583,27 @@ function classifyTradeQuality(match) {
   return "Watch";
 }
 
+function classifyHistoricalQuality(match) {
+  const divergenceAligned = match.divergence && match.divergence === match.direction;
+  const inZone = match.insideZone === "yes";
+  const strongRR = match.riskReward1 >= 2;
+  const sweepConfirmed = match.liquiditySweepConfirmed;
+
+  if (inZone && divergenceAligned && strongRR && sweepConfirmed) {
+    return "S";
+  }
+  if (inZone && divergenceAligned && strongRR) {
+    return "A+";
+  }
+  if ((inZone || match.distancePct <= 0.5) && (divergenceAligned || sweepConfirmed)) {
+    return "A";
+  }
+  if (match.distancePct <= 1.2) {
+    return "B";
+  }
+  return "Watch";
+}
+
 async function scanInstrument(symbol, options = {}) {
   const {
     displayName = symbol,
@@ -656,6 +683,189 @@ async function scanInstrument(symbol, options = {}) {
   }
 
   return matches;
+}
+
+function findNearestBacktestSignal(rows, timeframeName, impulse, proximity, index) {
+  const historical = rows.slice(0, index + 1);
+  if (historical.length < 45) {
+    return null;
+  }
+
+  const currentPrice = historical[historical.length - 1].close;
+  const zones = findOrderBlocks(historical, impulse);
+  const divergence = detectRsiDivergence(historical);
+  let best = null;
+
+  zones.forEach((zone) => {
+    const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
+    if (distancePct <= proximity || insideZone === "yes") {
+      const liquiditySweep = detectLiquiditySweep(historical, zone.direction);
+      const tradePlan = buildTradePlan({
+        direction: zone.direction,
+        zoneLow: zone.zoneLow,
+        zoneHigh: zone.zoneHigh,
+        currentPrice,
+        rows: historical
+      });
+      const candidate = {
+        timeframe: timeframeName,
+        direction: zone.direction,
+        currentPrice,
+        zoneLow: Number(zone.zoneLow.toFixed(2)),
+        zoneHigh: Number(zone.zoneHigh.toFixed(2)),
+        distancePct: Number(distancePct.toFixed(2)),
+        insideZone,
+        divergence: divergence?.type || null,
+        formedAt: zone.formedAt,
+        liquiditySweepConfirmed: liquiditySweep?.confirmed || false,
+        entry: tradePlan.entry,
+        stopLoss: tradePlan.stopLoss,
+        takeProfit1: tradePlan.takeProfit1,
+        takeProfit2: tradePlan.takeProfit2,
+        riskReward1: tradePlan.riskReward1,
+        riskReward2: tradePlan.riskReward2
+      };
+      if (!best || candidate.distancePct < best.distancePct) {
+        best = candidate;
+      }
+    }
+  });
+
+  if (!best) {
+    return null;
+  }
+
+  const tradeQuality = classifyHistoricalQuality(best);
+  return {
+    ...best,
+    tradeQuality,
+    qualityRank: QUALITY_RANK[tradeQuality] || 0
+  };
+}
+
+function evaluateTradeOutcome(signal, futureRows, timeframeName) {
+  const maxBars = BACKTEST_BAR_LIMITS[timeframeName] || 15;
+  const window = futureRows.slice(0, maxBars);
+
+  for (const row of window) {
+    if (signal.direction === "bullish") {
+      const hitStop = row.low <= signal.stopLoss;
+      const hitTp1 = row.high >= signal.takeProfit1;
+      const hitTp2 = row.high >= signal.takeProfit2;
+      if (hitStop && hitTp1) {
+        return { status: "loss", realizedR: -1, tp2Hit: false };
+      }
+      if (hitStop) {
+        return { status: "loss", realizedR: -1, tp2Hit: false };
+      }
+      if (hitTp2) {
+        return { status: "win", realizedR: signal.riskReward2, tp2Hit: true };
+      }
+      if (hitTp1) {
+        return { status: "win", realizedR: signal.riskReward1, tp2Hit: false };
+      }
+    } else {
+      const hitStop = row.high >= signal.stopLoss;
+      const hitTp1 = row.low <= signal.takeProfit1;
+      const hitTp2 = row.low <= signal.takeProfit2;
+      if (hitStop && hitTp1) {
+        return { status: "loss", realizedR: -1, tp2Hit: false };
+      }
+      if (hitStop) {
+        return { status: "loss", realizedR: -1, tp2Hit: false };
+      }
+      if (hitTp2) {
+        return { status: "win", realizedR: signal.riskReward2, tp2Hit: true };
+      }
+      if (hitTp1) {
+        return { status: "win", realizedR: signal.riskReward1, tp2Hit: false };
+      }
+    }
+  }
+
+  return { status: "open", realizedR: 0, tp2Hit: false };
+}
+
+function summarizeBacktestResults(results) {
+  const resolved = results.filter((item) => item.status !== "open");
+  const wins = resolved.filter((item) => item.status === "win");
+  const losses = resolved.filter((item) => item.status === "loss");
+  const avgWinR = wins.length ? wins.reduce((sum, item) => sum + item.realizedR, 0) / wins.length : 0;
+  const avgLossR = losses.length ? losses.reduce((sum, item) => sum + item.realizedR, 0) / losses.length : -1;
+  const expectancy = resolved.length
+    ? resolved.reduce((sum, item) => sum + item.realizedR, 0) / resolved.length
+    : 0;
+
+  return {
+    totalSignals: results.length,
+    resolvedTrades: resolved.length,
+    wins: wins.length,
+    losses: losses.length,
+    openTrades: results.length - resolved.length,
+    winRate: resolved.length ? Number(((wins.length / resolved.length) * 100).toFixed(1)) : 0,
+    tp2Rate: wins.length ? Number(((wins.filter((item) => item.tp2Hit).length / wins.length) * 100).toFixed(1)) : 0,
+    avgWinR: Number(avgWinR.toFixed(2)),
+    avgLossR: Number(avgLossR.toFixed(2)),
+    expectancy: Number(expectancy.toFixed(2))
+  };
+}
+
+async function backtestUniverse(symbols, options = {}) {
+  const sampleSymbols = symbols.slice(0, Math.min(symbols.length, 20));
+  const allTrades = [];
+
+  for (const symbol of sampleSymbols) {
+    for (const timeframe of TIMEFRAMES) {
+      let rows = await fetchYahooCandles(symbol, timeframe.interval, timeframe.range).catch(() => []);
+      if (timeframe.synthetic4h) {
+        rows = buildSynthetic4H(rows);
+      }
+      if (!rows.length || rows.length < 90) {
+        continue;
+      }
+
+      for (let index = 60; index < rows.length - 2; index += 1) {
+        const signal = findNearestBacktestSignal(rows, timeframe.name, options.impulse, options.proximity, index);
+        if (!signal) {
+          continue;
+        }
+
+        const outcome = evaluateTradeOutcome(signal, rows.slice(index + 1), timeframe.name);
+        allTrades.push({
+          symbol,
+          timeframe: timeframe.name,
+          tradeQuality: signal.tradeQuality,
+          direction: signal.direction,
+          status: outcome.status,
+          realizedR: outcome.realizedR,
+          tp2Hit: outcome.tp2Hit
+        });
+      }
+    }
+  }
+
+  const overall = summarizeBacktestResults(allTrades);
+
+  const byTimeframe = TIMEFRAMES.map((timeframe) => ({
+    timeframe: timeframe.name,
+    ...summarizeBacktestResults(allTrades.filter((item) => item.timeframe === timeframe.name))
+  })).filter((item) => item.totalSignals > 0);
+
+  const qualityKeys = ["S", "A+", "A", "B", "Watch"];
+  const byQuality = qualityKeys
+    .map((quality) => ({
+      quality,
+      ...summarizeBacktestResults(allTrades.filter((item) => item.tradeQuality === quality))
+    }))
+    .filter((item) => item.totalSignals > 0);
+
+  return {
+    sampleSymbols: sampleSymbols.length,
+    note: "Historical backtest uses the same order-block, divergence, liquidity, and TP/SL rules with a single-timeframe quality proxy.",
+    overall,
+    byTimeframe,
+    byQuality
+  };
 }
 
 async function scanUniverse(symbols, options = {}) {
@@ -810,6 +1020,7 @@ export default async (request) => {
       "Nifty 50"
     ];
     const news = await fetchNewsItems(newsQueries);
+    const backtest = await backtestUniverse(stockSymbols, { proximity, impulse });
 
     const payload = {
       generatedAt: new Date().toISOString(),
@@ -820,6 +1031,7 @@ export default async (request) => {
       marketTape,
       news,
       sectorSentiment,
+      backtest,
       meta: {
         scannedSymbols: stockSymbols.length,
         bullishDivergences: filteredStocks.filter((item) => item.divergenceBias === "bullish").length,
