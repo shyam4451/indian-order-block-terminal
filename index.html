@@ -6,35 +6,56 @@
     <title>Order Block Terminal India</title>
     <meta
       name="description"
-      content="Professional Indian market terminal for Daily and Weekly order blocks, RSI divergence, sector sentiment, live market tape, and backtested trade plans."
+      content="Scan Indian stocks and major index futures for 4H, Daily, and Weekly order-block proximity with RSI divergence signals."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
+    <script src="https://s3.tradingview.com/tv.js"></script>
   </head>
   <body>
-    <div class="terminal-shell">
-      <aside class="sidebar">
-        <div class="brand-block">
-          <div class="brand-mark">OB</div>
-          <div>
-            <p class="eyebrow">Client Terminal</p>
-            <h1>Order Block India</h1>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Indian Market Scanner</p>
+          <h1>Find stocks and index setups sitting at higher-timeframe order blocks.</h1>
+          <p class="hero-text">
+            This website scans Indian equities plus key index setups for futures traders, checks 4H, Daily, and
+            Weekly order-block proximity, and layers RSI divergence on top.
+          </p>
+          <div class="hero-pills">
+            <span>4H / Daily / Weekly</span>
+            <span>NSE stocks</span>
+            <span>Index futures focus</span>
+            <span>TradingView charts</span>
           </div>
         </div>
+        <div class="hero-panel glass-card">
+          <p class="panel-label">What this version does</p>
+          <ul class="feature-list">
+            <li>Automatically discovers NSE cash-market stocks from the official NSE security list</li>
+            <li>Scans a stock universe or a faster liquid preset</li>
+            <li>Includes a dedicated section for NIFTY, BANKNIFTY, FINNIFTY, and MIDCPNIFTY-style workflows</li>
+            <li>Lets you open the selected setup directly in TradingView</li>
+          </ul>
+        </div>
+      </header>
 
-        <div class="sidebar-card">
-          <p class="card-label">Scanner</p>
-          <h2>Live Market Filters</h2>
-          <p class="sidebar-copy">
-            Multi-timeframe scanning for Indian stocks and futures-oriented index workflows.
-          </p>
+      <main class="dashboard-grid">
+        <section class="controls-section glass-card">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker">Scanner Controls</p>
+              <h2>Run a fresh scan</h2>
+            </div>
+            <button id="scanButton" class="primary-button">Run Scan</button>
+          </div>
 
-          <div class="controls-stack">
+          <div class="controls-grid">
             <label class="control">
               <span>Universe</span>
               <select id="universe">
@@ -50,7 +71,7 @@
             </label>
 
             <label class="control">
-              <span>Distance from zone (%)</span>
+              <span>Max distance from zone (%)</span>
               <input id="proximity" type="number" min="0.1" max="5" step="0.1" value="1" />
             </label>
 
@@ -60,306 +81,95 @@
             </label>
 
             <label class="control">
-              <span>Min matching timeframes</span>
+              <span>Minimum matching timeframes</span>
               <input id="minTimeframes" type="number" min="1" max="3" value="1" />
             </label>
           </div>
 
-          <button id="scanButton" class="primary-button">Run Market Scan</button>
-          <p class="helper-text">Best for hosted speed: start with `Nifty 50` or `Liquid F&O stocks`.</p>
-        </div>
+          <p class="fine-print">
+            For hosting on Netlify, the faster presets are the best default. Full NSE scans can be heavier because
+            serverless functions have time limits.
+          </p>
+        </section>
 
-        <div class="sidebar-card muted-card">
-          <p class="card-label">Coverage</p>
-          <div class="chip-grid">
-            <span class="chip">Daily</span>
-            <span class="chip">Weekly</span>
-            <span class="chip">TP1 20 EMA</span>
-            <span class="chip">RSI Divergence</span>
-            <span class="chip">Live Tape</span>
-            <span class="chip">Sector Sentiment</span>
-            <span class="chip">News Flow</span>
-          </div>
-        </div>
-      </aside>
-
-      <main class="main-panel">
-        <header class="topbar panel-card">
-          <div>
-            <p class="card-label">Market Overview</p>
-            <h2>Institutional Zone Monitor</h2>
-            <p id="scanMeta" class="subtle-text">No scan yet.</p>
-          </div>
-          <div id="marketTape" class="market-tape">
-            <article class="tape-card">
-              <span class="label">NIFTY 50</span>
-              <strong>--</strong>
-              <small>--</small>
-            </article>
-            <article class="tape-card">
-              <span class="label">SENSEX</span>
-              <strong>--</strong>
-              <small>--</small>
-            </article>
-          </div>
-        </header>
-
-        <section class="metrics-row">
-          <article class="metric-card panel-card">
-            <span class="metric-label">Universe Scanned</span>
+        <section class="metrics-section">
+          <article class="metric-card glass-card">
+            <span class="metric-label">Scanned</span>
             <strong id="metricScanned">-</strong>
-            <small>Symbols processed in the latest run</small>
           </article>
-          <article class="metric-card panel-card">
-            <span class="metric-label">Actionable Matches</span>
+          <article class="metric-card glass-card">
+            <span class="metric-label">Matches</span>
             <strong id="metricMatches">-</strong>
-            <small>Current board results after filters</small>
           </article>
-          <article class="metric-card panel-card">
-            <span class="metric-label">Daily Setups</span>
-            <strong id="metricDaily">-</strong>
-            <small>Execution-ready Daily board candidates</small>
+          <article class="metric-card glass-card">
+            <span class="metric-label">Bullish RSI Divs</span>
+            <strong id="metricBullish">-</strong>
           </article>
-          <article class="metric-card panel-card">
-            <span class="metric-label">Weekly Setups</span>
-            <strong id="metricWeekly">-</strong>
-            <small>Higher-timeframe Weekly board candidates</small>
+          <article class="metric-card glass-card">
+            <span class="metric-label">Index Futures</span>
+            <strong id="metricIndices">-</strong>
           </article>
         </section>
 
-        <section class="workspace-grid">
-          <section class="table-panel panel-card">
-            <div class="panel-head">
-              <div>
-                <p class="card-label">Stocks Terminal</p>
-                <h3>Automatic Setup Feed</h3>
-              </div>
-              <div class="legend">
-                <span class="legend-pill s-tier">S Tier</span>
-                <span class="legend-pill bullish">Bullish</span>
-                <span class="legend-pill bearish">Bearish</span>
-                <span class="legend-pill neutral">Near Zone</span>
-              </div>
-            </div>
-
-            <div class="filter-bar">
-              <label class="mini-control">
-                <span>Bias</span>
-                <select id="biasFilter">
-                  <option value="all">All</option>
-                  <option value="bullish">Bullish</option>
-                  <option value="bearish">Bearish</option>
-                </select>
-              </label>
-              <label class="mini-control">
-                <span>Divergence</span>
-                <select id="divergenceFilter">
-                  <option value="all">All</option>
-                  <option value="bullish">Bullish</option>
-                  <option value="bearish">Bearish</option>
-                  <option value="none">None</option>
-                </select>
-              </label>
-              <label class="mini-control">
-                <span>Zone State</span>
-                <select id="zoneFilter">
-                  <option value="all">All</option>
-                  <option value="inside">Inside zone</option>
-                  <option value="near">Near zone</option>
-                </select>
-              </label>
-              <label class="mini-control">
-                <span>Liquidity</span>
-                <select id="liquidityFilter">
-                  <option value="all">All</option>
-                  <option value="sweep">Sweep confirmed</option>
-                  <option value="none">No sweep</option>
-                </select>
-              </label>
-              <label class="mini-control">
-                <span>Trade Quality</span>
-                <select id="qualityFilter">
-                  <option value="all">All</option>
-                  <option value="S">S</option>
-                  <option value="A+">A+</option>
-                  <option value="A">A</option>
-                  <option value="B">B</option>
-                  <option value="Watch">Watch</option>
-                </select>
-              </label>
-              <label class="mini-control">
-                <span>Sort</span>
-                <select id="sortBy">
-                  <option value="score">Highest score</option>
-                  <option value="distance">Closest to order block</option>
-                  <option value="quality">Best trade quality</option>
-                  <option value="confluence">Most timeframe confluence</option>
-                  <option value="rr">Best risk/reward</option>
-                  <option value="recent">Newest zone</option>
-                </select>
-              </label>
-            </div>
-
-            <div class="desk-summary">
-              <article class="desk-summary-card">
-                <span class="desk-summary-label">Execution Model</span>
-                <strong>Daily and Weekly only</strong>
-                <small>The live terminal focuses on cleaner HTF execution and avoids noisy 4H-only triggers.</small>
-              </article>
-              <article class="desk-summary-card">
-                <span class="desk-summary-label">Profit Logic</span>
-                <strong>TP1 anchors to the 20 EMA</strong>
-                <small>TP1 is the mean-reversion objective, while TP2 still tracks the larger structure extension.</small>
-              </article>
-            </div>
-
-            <div class="desk-grid">
-              <section class="scan-desk">
-                <div class="desk-header">
-                  <div>
-                    <p class="card-label">Daily Desk</p>
-                    <h4>Daily Execution Scan</h4>
-                  </div>
-                  <span id="dailyCount" class="desk-count">0 setups</span>
-                </div>
-                <div id="dailyBody" class="setup-list">
-                  <div class="empty-state">Run a scan to populate the Daily board.</div>
-                </div>
-              </section>
-
-              <section class="scan-desk">
-                <div class="desk-header">
-                  <div>
-                    <p class="card-label">Weekly Desk</p>
-                    <h4>Weekly Structure Scan</h4>
-                  </div>
-                  <span id="weeklyCount" class="desk-count">0 setups</span>
-                </div>
-                <div id="weeklyBody" class="setup-list">
-                  <div class="empty-state">Run a scan to populate the Weekly board.</div>
-                </div>
-              </section>
-            </div>
-          </section>
-
-          <section class="intel-panel">
-            <section class="news-panel panel-card">
-              <div class="panel-head">
-                <div>
-                  <p class="card-label">News Flow</p>
-                  <h3>Stocks In Focus</h3>
-                </div>
-              </div>
-              <div id="newsFeed" class="news-feed">
-                <article class="news-card skeleton-card"></article>
-                <article class="news-card skeleton-card"></article>
-                <article class="news-card skeleton-card"></article>
-              </div>
-            </section>
-
-            <section class="sector-panel panel-card">
-              <div class="panel-head">
-                <div>
-                  <p class="card-label">Sector Pulse</p>
-                  <h3>Sector Sentiment Score</h3>
-                </div>
-              </div>
-              <div id="sectorSentiment" class="sector-list">
-                <div class="empty-state">Sector sentiment will appear after the scan.</div>
-              </div>
-            </section>
-          </section>
-
-          <section class="chart-panel panel-card">
-            <div class="panel-head">
-              <div>
-                <p class="card-label">Execution Framework</p>
-                <h3>How The Terminal Ranks Trades</h3>
-              </div>
-            </div>
-            <div class="guide-grid">
-              <div class="guide-item">
-                <span class="label">Bias</span>
-                <p>Daily and Weekly order blocks set the directional context. The terminal is now optimized for higher-timeframe trades only.</p>
-              </div>
-              <div class="guide-item">
-                <span class="label">Liquidity</span>
-                <p>`sweep` means recent highs or lows were taken before price reclaimed the zone.</p>
-              </div>
-              <div class="guide-item">
-                <span class="label">Trade Quality</span>
-                <p>`A / A+ / S` remain the real execution tiers, while `B` stays on the live board only as a watchlist candidate.</p>
-              </div>
-              <div class="guide-item">
-                <span class="label">Plan Logic</span>
-                <p>TP1 is the 20 EMA mean-reversion target, TP2 is the larger structure target, and the backtest stays stricter than the discovery board.</p>
-              </div>
-            </div>
-          </section>
-        </section>
-
-        <section class="indices-panel panel-card">
-          <div class="panel-head">
+        <section class="table-section glass-card">
+          <div class="section-head">
             <div>
-              <p class="card-label">Index Desk</p>
-              <h3>Futures-Oriented Index Watchlist</h3>
+              <p class="section-kicker">Stocks</p>
+              <h2>Automatic stock findings</h2>
             </div>
-            <p class="subtle-text">Built for NIFTY, BANKNIFTY, FINNIFTY, and MIDCPNIFTY-style review.</p>
+            <p id="scanMeta" class="scan-meta">No scan yet.</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th>TF</th>
+                  <th>Bias</th>
+                  <th>Price</th>
+                  <th>Zone</th>
+                  <th>Distance</th>
+                  <th>RSI Div</th>
+                  <th>Score</th>
+                  <th>Chart</th>
+                </tr>
+              </thead>
+              <tbody id="stocksBody">
+                <tr>
+                  <td colspan="9" class="empty-state">Run a scan to load stock setups.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="indices-section glass-card">
+          <div class="section-head">
+            <div>
+              <p class="section-kicker">Index Futures</p>
+              <h2>Major index setups for futures traders</h2>
+            </div>
+            <p class="scan-meta">Signals are derived from index data, with TradingView links pointing to futures-friendly charts.</p>
           </div>
           <div id="indicesGrid" class="indices-grid">
             <article class="index-card skeleton-card"></article>
             <article class="index-card skeleton-card"></article>
-            <article class="index-card skeleton-card"></article>
-            <article class="index-card skeleton-card"></article>
           </div>
         </section>
 
-        <section class="backtest-panel panel-card">
-          <div class="panel-head">
+        <section class="chart-section glass-card">
+          <div class="section-head">
             <div>
-              <p class="card-label">Backtest Lab</p>
-              <h3>Historical Probability Snapshot</h3>
+              <p class="section-kicker">Chart</p>
+              <h2 id="chartTitle">TradingView inspection panel</h2>
             </div>
-            <p id="backtestNote" class="subtle-text">Backtest summary will appear after the scan.</p>
+            <a id="chartLink" class="link-button" href="#" target="_blank" rel="noreferrer">Open in TradingView</a>
           </div>
-
-          <div class="backtest-grid">
-            <article class="metric-card mini-metric">
-              <span class="metric-label">Signals</span>
-              <strong id="btSignals">-</strong>
-            </article>
-            <article class="metric-card mini-metric">
-              <span class="metric-label">Resolved</span>
-              <strong id="btResolved">-</strong>
-            </article>
-            <article class="metric-card mini-metric">
-              <span class="metric-label">Win Rate</span>
-              <strong id="btWinRate">-</strong>
-            </article>
-            <article class="metric-card mini-metric">
-              <span class="metric-label">Expectancy</span>
-              <strong id="btExpectancy">-</strong>
-            </article>
-          </div>
-
-          <div class="backtest-tables">
-            <div>
-              <p class="card-label">By Timeframe</p>
-              <div id="backtestTimeframes" class="analytics-list">
-                <div class="empty-state">Waiting for backtest data.</div>
-              </div>
-            </div>
-            <div>
-              <p class="card-label">By Quality</p>
-              <div id="backtestQuality" class="analytics-list">
-                <div class="empty-state">Waiting for backtest data.</div>
-              </div>
-            </div>
-          </div>
+          <div id="chartContainer" class="chart-container"></div>
         </section>
       </main>
     </div>
 
     <script type="module" src="./web/app.js"></script>
   </body>
-</html>
+  </html>

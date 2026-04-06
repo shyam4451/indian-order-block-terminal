@@ -7,42 +7,19 @@ const elements = {
   minTimeframes: document.getElementById("minTimeframes"),
   metricScanned: document.getElementById("metricScanned"),
   metricMatches: document.getElementById("metricMatches"),
-  metricDaily: document.getElementById("metricDaily"),
-  metricWeekly: document.getElementById("metricWeekly"),
-  dailyBody: document.getElementById("dailyBody"),
-  weeklyBody: document.getElementById("weeklyBody"),
-  dailyCount: document.getElementById("dailyCount"),
-  weeklyCount: document.getElementById("weeklyCount"),
+  metricBullish: document.getElementById("metricBullish"),
+  metricIndices: document.getElementById("metricIndices"),
+  stocksBody: document.getElementById("stocksBody"),
   indicesGrid: document.getElementById("indicesGrid"),
   scanMeta: document.getElementById("scanMeta"),
-  marketTape: document.getElementById("marketTape"),
-  newsFeed: document.getElementById("newsFeed"),
-  sectorSentiment: document.getElementById("sectorSentiment"),
-  backtestNote: document.getElementById("backtestNote"),
-  btSignals: document.getElementById("btSignals"),
-  btResolved: document.getElementById("btResolved"),
-  btWinRate: document.getElementById("btWinRate"),
-  btExpectancy: document.getElementById("btExpectancy"),
-  backtestTimeframes: document.getElementById("backtestTimeframes"),
-  backtestQuality: document.getElementById("backtestQuality"),
-  biasFilter: document.getElementById("biasFilter"),
-  divergenceFilter: document.getElementById("divergenceFilter"),
-  zoneFilter: document.getElementById("zoneFilter"),
-  liquidityFilter: document.getElementById("liquidityFilter"),
-  qualityFilter: document.getElementById("qualityFilter"),
-  sortBy: document.getElementById("sortBy")
-};
-
-const qualityOrder = {
-  S: 5,
-  "A+": 4,
-  A: 3,
-  B: 2,
-  Watch: 1
+  chartTitle: document.getElementById("chartTitle"),
+  chartLink: document.getElementById("chartLink"),
+  chartContainer: document.getElementById("chartContainer")
 };
 
 const state = {
-  latestPayload: null
+  latestPayload: null,
+  chartSymbol: "NSE:RELIANCE"
 };
 
 function formatNumber(value, digits = 2) {
@@ -55,273 +32,95 @@ function formatNumber(value, digits = 2) {
   });
 }
 
-function formatDate(value) {
-  if (!value) {
-    return "-";
+function chartUrl(symbol) {
+  return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`;
+}
+
+function renderTradingView(symbol, title) {
+  state.chartSymbol = symbol;
+  elements.chartTitle.textContent = title;
+  elements.chartLink.href = chartUrl(symbol);
+  elements.chartContainer.innerHTML = '<div id="tv-widget" style="height: 560px;"></div>';
+
+  if (!window.TradingView) {
+    elements.chartContainer.innerHTML = '<div class="empty-state">TradingView widget failed to load.</div>';
+    return;
   }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return date.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric"
+
+  // TradingView expects a plain DOM container to mount into.
+  new window.TradingView.widget({
+    autosize: true,
+    symbol,
+    interval: "240",
+    timezone: "Asia/Kolkata",
+    theme: "dark",
+    style: "1",
+    locale: "en",
+    enable_publishing: false,
+    allow_symbol_change: true,
+    hide_side_toolbar: false,
+    container_id: "tv-widget"
   });
 }
 
-function qualityClass(quality) {
-  if (quality === "S") return "s-tier";
-  if (quality === "A+" || quality === "A") return "bullish";
-  if (quality === "B") return "neutral";
-  return "muted";
+function makeChip(label, className = "") {
+  return `<span class="chip ${className}">${label}</span>`;
 }
 
-function divergenceClass(divergence) {
-  if (divergence === "bullish") return "bullish";
-  if (divergence === "bearish") return "bearish";
-  return "neutral";
-}
-
-function buildFilteredStocks() {
-  if (!state.latestPayload) {
-    return [];
-  }
-
-  const filters = {
-    bias: elements.biasFilter.value,
-    divergence: elements.divergenceFilter.value,
-    zone: elements.zoneFilter.value,
-    liquidity: elements.liquidityFilter.value,
-    quality: elements.qualityFilter.value,
-    sortBy: elements.sortBy.value
-  };
-
-  const filtered = state.latestPayload.stocks.filter((row) => {
-    if (filters.bias !== "all" && row.direction !== filters.bias) return false;
-    if (filters.divergence !== "all" && (row.divergence || "none") !== filters.divergence) return false;
-    if (filters.zone === "inside" && row.insideZone !== "yes") return false;
-    if (filters.zone === "near" && row.insideZone !== "no") return false;
-    if (filters.liquidity === "sweep" && !row.liquiditySweepConfirmed) return false;
-    if (filters.liquidity === "none" && row.liquiditySweepConfirmed) return false;
-    if (filters.quality !== "all" && row.tradeQuality !== filters.quality) return false;
-    return true;
-  });
-
-  filtered.sort((a, b) => {
-    switch (filters.sortBy) {
-      case "distance":
-        return a.distancePct - b.distancePct;
-      case "quality":
-        return (qualityOrder[b.tradeQuality] || 0) - (qualityOrder[a.tradeQuality] || 0) || b.score - a.score;
-      case "confluence":
-        return b.matchedTimeframes - a.matchedTimeframes || b.score - a.score;
-      case "rr":
-        return b.riskReward1 - a.riskReward1 || b.score - a.score;
-      case "recent":
-        return new Date(b.formedAt) - new Date(a.formedAt);
-      case "score":
-      default:
-        return b.score - a.score || a.distancePct - b.distancePct;
-    }
-  });
-
-  return filtered;
-}
-
-function stockCardMarkup(row) {
+function stockRowMarkup(row) {
   const divergence = row.divergence || "none";
-  const biasClass = row.direction === "bullish" ? "bullish" : "bearish";
-  const distanceClass = row.insideZone === "yes" ? "inside-yes" : "inside-no";
-  const qualityTone = qualityClass(row.tradeQuality);
-  const sweepTone = row.liquiditySweepConfirmed ? "bullish" : "muted";
-  const zoneState = row.insideZone === "yes" ? "inside zone" : "near zone";
-
+  const tvSymbol = row.tvSymbol || `NSE:${row.symbol.replace(".NS", "")}`;
   return `
-    <article class="setup-card">
-      <div class="setup-top">
-        <div class="setup-ident">
-          <span class="stock-symbol">${row.symbol}</span>
-          <span class="stock-subline">${row.timeframe} setup • formed ${formatDate(row.formedAt)}</span>
-        </div>
-        <div class="setup-chip-line">
-          <span class="badge ${biasClass}">${row.direction}</span>
-          <span class="badge ${qualityTone}">${row.tradeQuality}</span>
-          <span class="badge ${sweepTone}">${row.liquiditySweepConfirmed ? "sweep" : "no sweep"}</span>
-        </div>
-      </div>
-
-      <div class="setup-strip">
-        <div class="strip-item">
-          <span class="setup-label">Last</span>
-          <strong>${formatNumber(row.currentPrice)}</strong>
-        </div>
-        <div class="strip-item">
-          <span class="setup-label">Distance</span>
-          <strong class="${distanceClass}">${formatNumber(row.distancePct)}%</strong>
-          <small class="${distanceClass}">${zoneState}</small>
-        </div>
-        <div class="strip-item">
-          <span class="setup-label">Score</span>
-          <strong>${formatNumber(row.score)}</strong>
-        </div>
-        <div class="strip-item">
-          <span class="setup-label">R:R</span>
-          <strong>1:${formatNumber(row.riskReward1)}</strong>
-        </div>
-      </div>
-
-      <div class="setup-columns">
-        <section class="setup-panel">
-          <span class="setup-label">Zone</span>
-          <div class="setup-kv">
-            <span>Order Block</span>
-            <strong>${formatNumber(row.zoneLow)} - ${formatNumber(row.zoneHigh)}</strong>
-          </div>
-          <div class="setup-kv">
-            <span>Divergence</span>
-            <strong>${divergence}</strong>
-          </div>
-          <div class="setup-kv">
-            <span>Context</span>
-            <strong>${row.matchedTimeframes} timeframe match</strong>
-          </div>
-        </section>
-
-        <section class="setup-panel">
-          <span class="setup-label">Trade Plan</span>
-          <div class="setup-kv">
-            <span>Entry</span>
-            <strong>${formatNumber(row.entry)}</strong>
-          </div>
-          <div class="setup-kv">
-            <span>Stop Loss</span>
-            <strong>${formatNumber(row.stopLoss)}</strong>
-          </div>
-          <div class="setup-kv">
-            <span>TP1</span>
-            <strong>${formatNumber(row.takeProfit1)}</strong>
-            <small>20 EMA target</small>
-          </div>
-          <div class="setup-kv">
-            <span>TP2</span>
-            <strong>${formatNumber(row.takeProfit2)}</strong>
-            <small>structure target</small>
-          </div>
-        </section>
-      </div>
-
-      <div class="setup-footer">
-        <span class="setup-footer-note">Trend aligned: ${row.trendAligned ? "yes" : "no"}</span>
-        <span class="setup-footer-note">First retest: ${row.firstRetestOnly ? "yes" : "no"}</span>
-        <span class="setup-footer-note">Confirmation: ${row.confirmationCandle ? "yes" : "no"}</span>
-      </div>
-    </article>
+    <tr>
+      <td><strong>${row.symbol}</strong></td>
+      <td>${row.timeframe}</td>
+      <td class="bias-${row.direction}">${row.direction}</td>
+      <td>${formatNumber(row.currentPrice)}</td>
+      <td>${formatNumber(row.zoneLow)} - ${formatNumber(row.zoneHigh)}</td>
+      <td class="inside-${row.insideZone}">${formatNumber(row.distancePct)}%</td>
+      <td class="div-${divergence}">${divergence}</td>
+      <td>${formatNumber(row.score)}</td>
+      <td>
+        <a class="link-button" href="${chartUrl(tvSymbol)}" target="_blank" rel="noreferrer" data-chart-symbol="${tvSymbol}" data-chart-title="${row.symbol} chart">
+          View
+        </a>
+      </td>
+    </tr>
   `;
 }
 
 function indexCardMarkup(item) {
   const divergence = item.divergence || "none";
-  const biasClass = item.direction === "bullish" ? "bullish" : "bearish";
-  const divergenceTone = divergenceClass(divergence);
-  const qualityTone = qualityClass(item.tradeQuality);
   return `
     <article class="index-card">
-      <div class="index-header">
-        <h3>${item.name}</h3>
-        <span class="badge ${qualityTone}">${item.tradeQuality}</span>
+      <h3>${item.name}</h3>
+      <div class="index-meta">
+        ${makeChip(item.direction || "watch", `bias-${item.direction || "bullish"}`)}
+        ${makeChip(item.timeframe || "multi-timeframe")}
+        ${makeChip(`RSI ${divergence}`, `div-${divergence}`)}
       </div>
-      <div class="chip-grid">
-        <span class="chip ${biasClass}">${item.direction || "watch"}</span>
-        <span class="chip ${divergenceTone}">RSI ${divergence}</span>
-        <span class="chip">${item.timeframe || "multi-timeframe"}</span>
-      </div>
-      <div class="index-grid">
-        <div>
-          <span class="label">Current</span>
-          <span class="value">${formatNumber(item.currentPrice)}</span>
-        </div>
-        <div>
-          <span class="label">Distance</span>
-          <span class="value ${item.insideZone === "yes" ? "inside-yes" : "inside-no"}">${formatNumber(item.distancePct)}%</span>
-        </div>
-        <div>
-          <span class="label">Entry / SL</span>
-          <span class="value">${formatNumber(item.entry)} / ${formatNumber(item.stopLoss)}</span>
-        </div>
-        <div>
-          <span class="label">TP1 / RR</span>
-          <span class="value">${formatNumber(item.takeProfit1)} / 1:${formatNumber(item.riskReward1)}</span>
-        </div>
+      <p class="index-stat">Spot/index source: ${item.sourceSymbol}</p>
+      <p class="index-stat">Current: ${formatNumber(item.currentPrice)} | Zone: ${formatNumber(item.zoneLow)} - ${formatNumber(item.zoneHigh)}</p>
+      <p class="index-stat">Distance: ${formatNumber(item.distancePct)}% | Matches: ${item.matchedTimeframes}</p>
+      <div class="index-links">
+        <a class="link-button" href="${chartUrl(item.tvSymbol)}" target="_blank" rel="noreferrer" data-chart-symbol="${item.tvSymbol}" data-chart-title="${item.name} futures chart">
+          Futures Chart
+        </a>
+        <a class="link-button" href="${chartUrl(item.cashTvSymbol)}" target="_blank" rel="noreferrer">
+          Cash Index
+        </a>
       </div>
     </article>
   `;
 }
 
-function tapeCardMarkup(item) {
-  const tone = Number(item.change) >= 0 ? "bullish" : "bearish";
-  const sign = Number(item.change) >= 0 ? "+" : "";
-  return `
-    <article class="tape-card">
-      <span class="label">${item.name}</span>
-      <strong>${formatNumber(item.price)}</strong>
-      <small class="${tone}">${sign}${formatNumber(item.change)} (${sign}${formatNumber(item.changePct)}%)</small>
-    </article>
-  `;
-}
-
-function newsCardMarkup(item) {
-  return `
-    <a class="news-card" href="${item.link}" target="_blank" rel="noreferrer">
-      <span class="news-tag">${item.sourceQuery}</span>
-      <h4>${item.title}</h4>
-      <small>${item.pubDate ? formatDate(item.pubDate) : "Latest"}</small>
-    </a>
-  `;
-}
-
-function sectorCardMarkup(item) {
-  const tone = item.sentimentScore >= 20 ? "bullish" : item.sentimentScore <= -5 ? "bearish" : "neutral";
-  return `
-    <article class="sector-card">
-      <div class="sector-head">
-        <strong>${item.sector}</strong>
-        <span class="badge ${qualityClass(item.topQuality)}">${item.topQuality}</span>
-      </div>
-      <div class="sector-stats">
-        <span>Sentiment <strong class="${tone}">${formatNumber(item.sentimentScore, 1)}</strong></span>
-        <span>Avg Score <strong>${formatNumber(item.avgScore)}</strong></span>
-        <span>Avg R:R <strong>1:${formatNumber(item.avgRR)}</strong></span>
-      </div>
-    </article>
-  `;
-}
-
-function analyticsRowMarkup(item, labelKey) {
-  return `
-    <article class="analytics-row">
-      <div>
-        <strong>${item[labelKey]}</strong>
-        <small>${item.totalSignals} signals</small>
-      </div>
-      <div class="analytics-values">
-        <span>WR <strong>${formatNumber(item.winRate, 1)}%</strong></span>
-        <span>EXP <strong>${formatNumber(item.expectancy, 2)}R</strong></span>
-        <span>TP2 <strong>${formatNumber(item.tp2Rate, 1)}%</strong></span>
-      </div>
-    </article>
-  `;
-}
-
-function renderDesk(rows, target, countTarget, timeframeLabel) {
+function renderStocks(rows) {
   if (!rows.length) {
-    target.innerHTML = `<div class="empty-state">No ${timeframeLabel} setups matched the current filters.</div>`;
-    countTarget.textContent = "0 setups";
+    elements.stocksBody.innerHTML = '<tr><td colspan="9" class="empty-state">No setups matched the current filters.</td></tr>';
     return;
   }
 
-  target.innerHTML = rows.map(stockCardMarkup).join("");
-  countTarget.textContent = `${rows.length} setup${rows.length === 1 ? "" : "s"}`;
+  elements.stocksBody.innerHTML = rows.map(stockRowMarkup).join("");
 }
 
 function renderIndices(rows) {
@@ -333,77 +132,22 @@ function renderIndices(rows) {
   elements.indicesGrid.innerHTML = rows.map(indexCardMarkup).join("");
 }
 
-function renderTape(rows) {
-  if (!rows.length) {
-    return;
-  }
-  elements.marketTape.innerHTML = rows.map(tapeCardMarkup).join("");
-}
-
-function renderNews(rows) {
-  if (!rows.length) {
-    elements.newsFeed.innerHTML = '<div class="empty-state">No live headlines could be loaded right now.</div>';
-    return;
-  }
-  elements.newsFeed.innerHTML = rows.map(newsCardMarkup).join("");
-}
-
-function renderSectorSentiment(rows) {
-  if (!rows.length) {
-    elements.sectorSentiment.innerHTML = '<div class="empty-state">Sector sentiment will appear after the scan.</div>';
-    return;
-  }
-  elements.sectorSentiment.innerHTML = rows.slice(0, 8).map(sectorCardMarkup).join("");
-}
-
-function renderMetrics(payload, filteredStocks) {
-  const dailySetups = filteredStocks.filter((item) => item.timeframe === "Daily");
-  const weeklySetups = filteredStocks.filter((item) => item.timeframe === "Weekly");
+function renderMetrics(payload) {
   elements.metricScanned.textContent = payload.meta.scannedSymbols ?? "-";
-  elements.metricMatches.textContent = filteredStocks.length;
-  elements.metricDaily.textContent = dailySetups.length;
-  elements.metricWeekly.textContent = weeklySetups.length;
+  elements.metricMatches.textContent = payload.stocks.length;
+  elements.metricBullish.textContent = payload.meta.bullishDivergences ?? "-";
+  elements.metricIndices.textContent = payload.indices.length;
   elements.scanMeta.textContent = `Updated ${new Date(payload.generatedAt).toLocaleString("en-IN")} | Universe: ${payload.meta.universeLabel}`;
 }
 
-function renderBacktest(backtest) {
-  if (!backtest || !backtest.overall) {
-    elements.backtestNote.textContent = "Backtest summary will appear after the scan.";
-    elements.backtestTimeframes.innerHTML = '<div class="empty-state">Waiting for backtest data.</div>';
-    elements.backtestQuality.innerHTML = '<div class="empty-state">Waiting for backtest data.</div>';
-    return;
-  }
-
-  elements.backtestNote.textContent = `${backtest.note} Sample size: ${backtest.sampleSymbols} symbols.`;
-  elements.btSignals.textContent = backtest.overall.totalSignals;
-  elements.btResolved.textContent = backtest.overall.resolvedTrades;
-  elements.btWinRate.textContent = `${formatNumber(backtest.overall.winRate, 1)}%`;
-  elements.btExpectancy.textContent = `${formatNumber(backtest.overall.expectancy, 2)}R`;
-
-  elements.backtestTimeframes.innerHTML = backtest.byTimeframe.length
-    ? backtest.byTimeframe.map((item) => analyticsRowMarkup(item, "timeframe")).join("")
-    : '<div class="empty-state">No timeframe data available.</div>';
-
-  elements.backtestQuality.innerHTML = backtest.byQuality.length
-    ? backtest.byQuality.map((item) => analyticsRowMarkup(item, "quality")).join("")
-    : '<div class="empty-state">No quality data available.</div>';
-}
-
-function refreshView() {
-  if (!state.latestPayload) {
-    return;
-  }
-  const filteredStocks = buildFilteredStocks();
-  const dailyStocks = filteredStocks.filter((item) => item.timeframe === "Daily");
-  const weeklyStocks = filteredStocks.filter((item) => item.timeframe === "Weekly");
-  renderMetrics(state.latestPayload, filteredStocks);
-  renderDesk(dailyStocks, elements.dailyBody, elements.dailyCount, "Daily");
-  renderDesk(weeklyStocks, elements.weeklyBody, elements.weeklyCount, "Weekly");
-  renderIndices(state.latestPayload.indices || []);
-  renderTape(state.latestPayload.marketTape || []);
-  renderNews(state.latestPayload.news || []);
-  renderSectorSentiment(state.latestPayload.sectorSentiment || []);
-  renderBacktest(state.latestPayload.backtest);
+function attachChartLinks() {
+  document.querySelectorAll("[data-chart-symbol]").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      const symbol = event.currentTarget.dataset.chartSymbol;
+      const title = event.currentTarget.dataset.chartTitle;
+      renderTradingView(symbol, title);
+    });
+  });
 }
 
 async function runScan() {
@@ -424,32 +168,33 @@ async function runScan() {
       throw new Error(`Scan failed with status ${response.status}`);
     }
 
-    state.latestPayload = await response.json();
-    refreshView();
+    const payload = await response.json();
+    state.latestPayload = payload;
+    renderMetrics(payload);
+    renderStocks(payload.stocks);
+    renderIndices(payload.indices);
+    attachChartLinks();
+
+    const defaultChart = payload.stocks[0]?.tvSymbol || payload.indices[0]?.tvSymbol || "NSE:RELIANCE";
+    const defaultTitle = payload.stocks[0]
+      ? `${payload.stocks[0].symbol} chart`
+      : payload.indices[0]
+        ? `${payload.indices[0].name} futures chart`
+        : "TradingView inspection panel";
+    renderTradingView(defaultChart, defaultTitle);
   } catch (error) {
     console.error(error);
     elements.scanMeta.textContent = "Scan failed. Check your function logs and data source access.";
-    elements.dailyBody.innerHTML = '<div class="empty-state">The scan failed. See browser console or Netlify function logs.</div>';
-    elements.weeklyBody.innerHTML = '<div class="empty-state">The scan failed. See browser console or Netlify function logs.</div>';
-    elements.dailyCount.textContent = "0 setups";
-    elements.weeklyCount.textContent = "0 setups";
+    elements.stocksBody.innerHTML = '<tr><td colspan="9" class="empty-state">The scan failed. See browser console or Netlify function logs.</td></tr>';
     elements.indicesGrid.innerHTML = '<div class="empty-state">Could not load indices right now.</div>';
-    elements.newsFeed.innerHTML = '<div class="empty-state">Could not load news right now.</div>';
-    elements.sectorSentiment.innerHTML = '<div class="empty-state">Could not load sector sentiment right now.</div>';
-    elements.backtestTimeframes.innerHTML = '<div class="empty-state">Could not load backtest data right now.</div>';
-    elements.backtestQuality.innerHTML = '<div class="empty-state">Could not load backtest data right now.</div>';
   } finally {
     elements.scanButton.disabled = false;
-    elements.scanButton.textContent = "Run Market Scan";
+    elements.scanButton.textContent = "Run Scan";
   }
 }
 
 elements.scanButton.addEventListener("click", runScan);
-[elements.biasFilter, elements.divergenceFilter, elements.zoneFilter, elements.liquidityFilter, elements.qualityFilter, elements.sortBy]
-  .forEach((element) => {
-    element.addEventListener("change", refreshView);
-  });
-
 window.addEventListener("load", () => {
+  renderTradingView("NSE:RELIANCE", "TradingView inspection panel");
   runScan();
 });
