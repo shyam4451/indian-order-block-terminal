@@ -138,17 +138,27 @@ function stockCardMarkup(row) {
   return `
     <article class="setup-card">
       <div class="setup-top">
-        <div class="stock-cell">
-          <span class="stock-symbol">${row.symbol}</span>
-          <span class="stock-subline">Formed ${formatDate(row.formedAt)} | ${divergence} divergence</span>
+        <div class="setup-header-copy">
+          <div class="stock-cell">
+            <span class="stock-symbol">${row.symbol}</span>
+            <span class="stock-subline">Formed ${formatDate(row.formedAt)} | ${divergence} divergence</span>
+          </div>
+          <div class="setup-chip-line">
+            <span class="badge ${biasClass}">${row.direction}</span>
+            <span class="badge ${qualityTone}">${row.tradeQuality}</span>
+            <span class="badge ${row.liquiditySweepConfirmed ? "bullish" : "muted"}">
+              ${row.liquiditySweepConfirmed ? "sweep" : "no sweep"}
+            </span>
+          </div>
         </div>
-        <div class="setup-badges">
-          <span class="badge ${biasClass}">${row.direction}</span>
-          <span class="badge ${qualityTone}">${row.tradeQuality}</span>
+        <div class="setup-score-panel">
+          <span class="setup-label">Score</span>
+          <strong>${formatNumber(row.score)}</strong>
+          <small>1:${formatNumber(row.riskReward1)} R:R</small>
         </div>
       </div>
 
-      <div class="setup-grid">
+      <div class="setup-summary-grid">
         <div class="setup-metric">
           <span class="setup-label">Last</span>
           <strong>${formatNumber(row.currentPrice)}</strong>
@@ -159,18 +169,14 @@ function stockCardMarkup(row) {
           <small class="${distanceClass}">${row.insideZone === "yes" ? "inside zone" : "near zone"}</small>
         </div>
         <div class="setup-metric">
-          <span class="setup-label">Score</span>
-          <strong>${formatNumber(row.score)}</strong>
+          <span class="setup-label">Order Block</span>
+          <strong>${formatNumber(row.zoneLow)} - ${formatNumber(row.zoneHigh)}</strong>
         </div>
         <div class="setup-metric">
-          <span class="setup-label">Liquidity</span>
-          <strong>${row.liquiditySweepConfirmed ? "Sweep" : "None"}</strong>
+          <span class="setup-label">Context</span>
+          <strong>${row.timeframe}</strong>
+          <small>${row.matchedTimeframes} timeframe match</small>
         </div>
-      </div>
-
-      <div class="setup-zone">
-        <span class="setup-label">Order Block</span>
-        <strong>${formatNumber(row.zoneLow)} - ${formatNumber(row.zoneHigh)}</strong>
       </div>
 
       <div class="setup-plan-grid">
@@ -188,9 +194,9 @@ function stockCardMarkup(row) {
           <small>20 EMA</small>
         </div>
         <div class="setup-plan-card">
-          <span class="setup-label">TP2 / R:R</span>
+          <span class="setup-label">TP2</span>
           <strong>${formatNumber(row.takeProfit2)}</strong>
-          <small>1:${formatNumber(row.riskReward1)}</small>
+          <small>structure target</small>
         </div>
       </div>
     </article>
