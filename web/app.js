@@ -129,50 +129,71 @@ function buildFilteredStocks() {
   return filtered;
 }
 
-function stockRowMarkup(row) {
+function stockCardMarkup(row) {
   const divergence = row.divergence || "none";
   const biasClass = row.direction === "bullish" ? "bullish" : "bearish";
   const distanceClass = row.insideZone === "yes" ? "inside-yes" : "inside-no";
   const qualityTone = qualityClass(row.tradeQuality);
 
   return `
-    <tr>
-      <td>
+    <article class="setup-card">
+      <div class="setup-top">
         <div class="stock-cell">
           <span class="stock-symbol">${row.symbol}</span>
-          <span class="stock-subline">${divergence} divergence | ${row.liquiditySweepConfirmed ? "sweep" : "no sweep"}</span>
+          <span class="stock-subline">Formed ${formatDate(row.formedAt)} | ${divergence} divergence</span>
         </div>
-      </td>
-      <td><span class="badge ${biasClass}">${row.direction}</span></td>
-      <td>${formatNumber(row.currentPrice)}</td>
-      <td>
-        <div class="zone-cell">
-          <span class="zone-range">${formatNumber(row.zoneLow)} - ${formatNumber(row.zoneHigh)}</span>
-          <span class="zone-date">Formed ${formatDate(row.formedAt)}</span>
+        <div class="setup-badges">
+          <span class="badge ${biasClass}">${row.direction}</span>
+          <span class="badge ${qualityTone}">${row.tradeQuality}</span>
         </div>
-      </td>
-      <td>
-        <div class="distance-cell">
-          <span class="distance-value ${distanceClass}">${formatNumber(row.distancePct)}%</span>
-          <span class="distance-state ${distanceClass}">${row.insideZone === "yes" ? "inside zone" : "near zone"}</span>
+      </div>
+
+      <div class="setup-grid">
+        <div class="setup-metric">
+          <span class="setup-label">Last</span>
+          <strong>${formatNumber(row.currentPrice)}</strong>
         </div>
-      </td>
-      <td>
-        <div class="plan-cell">
-          <span>E ${formatNumber(row.entry)}</span>
-          <span>SL ${formatNumber(row.stopLoss)}</span>
-          <span>TP1 ${formatNumber(row.takeProfit1)}</span>
+        <div class="setup-metric">
+          <span class="setup-label">Distance</span>
+          <strong class="${distanceClass}">${formatNumber(row.distancePct)}%</strong>
+          <small class="${distanceClass}">${row.insideZone === "yes" ? "inside zone" : "near zone"}</small>
         </div>
-      </td>
-      <td><span class="badge ${qualityTone}">${row.tradeQuality}</span></td>
-      <td>
-        <div class="plan-cell">
-          <span>1:${formatNumber(row.riskReward1)}</span>
-          <span class="zone-date">TP2 ${formatNumber(row.takeProfit2)}</span>
+        <div class="setup-metric">
+          <span class="setup-label">Score</span>
+          <strong>${formatNumber(row.score)}</strong>
         </div>
-      </td>
-      <td><span class="score-pill">${formatNumber(row.score)}</span></td>
-    </tr>
+        <div class="setup-metric">
+          <span class="setup-label">Liquidity</span>
+          <strong>${row.liquiditySweepConfirmed ? "Sweep" : "None"}</strong>
+        </div>
+      </div>
+
+      <div class="setup-zone">
+        <span class="setup-label">Order Block</span>
+        <strong>${formatNumber(row.zoneLow)} - ${formatNumber(row.zoneHigh)}</strong>
+      </div>
+
+      <div class="setup-plan-grid">
+        <div class="setup-plan-card">
+          <span class="setup-label">Entry</span>
+          <strong>${formatNumber(row.entry)}</strong>
+        </div>
+        <div class="setup-plan-card">
+          <span class="setup-label">Stop Loss</span>
+          <strong>${formatNumber(row.stopLoss)}</strong>
+        </div>
+        <div class="setup-plan-card">
+          <span class="setup-label">TP1</span>
+          <strong>${formatNumber(row.takeProfit1)}</strong>
+          <small>20 EMA</small>
+        </div>
+        <div class="setup-plan-card">
+          <span class="setup-label">TP2 / R:R</span>
+          <strong>${formatNumber(row.takeProfit2)}</strong>
+          <small>1:${formatNumber(row.riskReward1)}</small>
+        </div>
+      </div>
+    </article>
   `;
 }
 
@@ -271,12 +292,12 @@ function analyticsRowMarkup(item, labelKey) {
 
 function renderDesk(rows, target, countTarget, timeframeLabel) {
   if (!rows.length) {
-    target.innerHTML = `<tr><td colspan="9" class="empty-state">No ${timeframeLabel} setups matched the current filters.</td></tr>`;
+    target.innerHTML = `<div class="empty-state">No ${timeframeLabel} setups matched the current filters.</div>`;
     countTarget.textContent = "0 setups";
     return;
   }
 
-  target.innerHTML = rows.map(stockRowMarkup).join("");
+  target.innerHTML = rows.map(stockCardMarkup).join("");
   countTarget.textContent = `${rows.length} setup${rows.length === 1 ? "" : "s"}`;
 }
 
@@ -385,8 +406,8 @@ async function runScan() {
   } catch (error) {
     console.error(error);
     elements.scanMeta.textContent = "Scan failed. Check your function logs and data source access.";
-    elements.dailyBody.innerHTML = '<tr><td colspan="9" class="empty-state">The scan failed. See browser console or Netlify function logs.</td></tr>';
-    elements.weeklyBody.innerHTML = '<tr><td colspan="9" class="empty-state">The scan failed. See browser console or Netlify function logs.</td></tr>';
+    elements.dailyBody.innerHTML = '<div class="empty-state">The scan failed. See browser console or Netlify function logs.</div>';
+    elements.weeklyBody.innerHTML = '<div class="empty-state">The scan failed. See browser console or Netlify function logs.</div>';
     elements.dailyCount.textContent = "0 setups";
     elements.weeklyCount.textContent = "0 setups";
     elements.indicesGrid.innerHTML = '<div class="empty-state">Could not load indices right now.</div>';
