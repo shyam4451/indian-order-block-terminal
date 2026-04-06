@@ -626,6 +626,7 @@ function buildTradePlan({ direction, zoneLow, zoneHigh, currentPrice, rows }) {
 function classifyTradeQuality(match) {
   const divergenceAligned = match.divergence && match.divergence === match.direction;
   const inZone = match.insideZone === "yes";
+  const nearZone = match.distancePct <= 0.35;
   const strongRR = match.riskReward1 >= 2;
   const strongConfluence = match.matchedTimeframes >= 2;
   const sweepConfirmed = match.liquiditySweepConfirmed;
@@ -634,7 +635,7 @@ function classifyTradeQuality(match) {
   const confirmationCandle = match.confirmationCandle;
 
   if (
-    inZone &&
+    (inZone || nearZone) &&
     strongConfluence &&
     divergenceAligned &&
     strongRR &&
@@ -646,24 +647,22 @@ function classifyTradeQuality(match) {
     return "S";
   }
   if (
-    inZone &&
+    (inZone || nearZone) &&
     strongRR &&
     trendAligned &&
-    confirmationCandle &&
-    firstRetestOnly &&
+    (confirmationCandle || firstRetestOnly) &&
     (sweepConfirmed || divergenceAligned)
   ) {
     return "A+";
   }
   if (
-    inZone &&
+    (inZone || nearZone) &&
     trendAligned &&
-    confirmationCandle &&
-    (sweepConfirmed || divergenceAligned || strongConfluence)
+    (sweepConfirmed || divergenceAligned || strongConfluence || confirmationCandle)
   ) {
     return "A";
   }
-  if (inZone && trendAligned) {
+  if ((inZone || nearZone) && trendAligned) {
     return "B";
   }
   return "Watch";
@@ -672,22 +671,23 @@ function classifyTradeQuality(match) {
 function classifyHistoricalQuality(match) {
   const divergenceAligned = match.divergence && match.divergence === match.direction;
   const inZone = match.insideZone === "yes";
+  const nearZone = match.distancePct <= 0.35;
   const strongRR = match.riskReward1 >= 2;
   const sweepConfirmed = match.liquiditySweepConfirmed;
   const trendAligned = match.trendAligned;
   const firstRetestOnly = match.firstRetestOnly;
   const confirmationCandle = match.confirmationCandle;
 
-  if (inZone && divergenceAligned && strongRR && sweepConfirmed && trendAligned && firstRetestOnly && confirmationCandle) {
+  if ((inZone || nearZone) && divergenceAligned && strongRR && sweepConfirmed && trendAligned && firstRetestOnly && confirmationCandle) {
     return "S";
   }
-  if (inZone && strongRR && trendAligned && confirmationCandle && firstRetestOnly && (sweepConfirmed || divergenceAligned)) {
+  if ((inZone || nearZone) && strongRR && trendAligned && (confirmationCandle || firstRetestOnly) && (sweepConfirmed || divergenceAligned)) {
     return "A+";
   }
-  if (inZone && trendAligned && confirmationCandle && (divergenceAligned || sweepConfirmed)) {
+  if ((inZone || nearZone) && trendAligned && (divergenceAligned || sweepConfirmed || confirmationCandle)) {
     return "A";
   }
-  if (inZone && trendAligned) {
+  if ((inZone || nearZone) && trendAligned) {
     return "B";
   }
   return "Watch";
@@ -720,7 +720,7 @@ async function scanInstrument(symbol, options = {}) {
 
     zones.forEach((zone) => {
       const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
-      if (insideZone === "yes") {
+      if (insideZone === "yes" || distancePct <= 0.35) {
         const liquiditySweep = detectLiquiditySweep(rows, zone.direction);
         const freshness = assessZoneFreshness(rows, zone);
         const trendAligned = detectTrendAlignment(rows, zone.direction);
@@ -802,7 +802,7 @@ function findNearestBacktestSignal(rows, timeframeName, impulse, proximity, inde
 
   zones.forEach((zone) => {
     const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
-    if (insideZone === "yes") {
+    if (insideZone === "yes" || distancePct <= 0.35) {
       const liquiditySweep = detectLiquiditySweep(historical, zone.direction);
       const freshness = assessZoneFreshness(historical, zone);
       const trendAligned = detectTrendAlignment(historical, zone.direction);
@@ -976,7 +976,7 @@ async function backtestUniverse(symbols, options = {}) {
 
   return {
     sampleSymbols: sampleSymbols.length,
-    note: "Historical backtest uses the stricter execution model: inside-zone only, trend alignment, confirmation candle, first-retest preference, liquidity support, and the same TP/SL rules.",
+    note: "Historical backtest uses a stricter but tradable execution model: trend alignment, near/inside-zone entries, quality-ranked confirmation, liquidity support, and the same TP/SL rules.",
     overall,
     byTimeframe,
     byQuality
