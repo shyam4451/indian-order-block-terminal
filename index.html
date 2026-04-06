@@ -6,7 +6,7 @@
     <title>Order Block Terminal India</title>
     <meta
       name="description"
-      content="Professional Indian market terminal for higher-timeframe order blocks, RSI divergence, and TradingView-linked stock and index workflows."
+      content="Professional Indian market terminal for Daily and Weekly order blocks, RSI divergence, sector sentiment, live market tape, and backtested trade plans."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -72,9 +72,9 @@
         <div class="sidebar-card muted-card">
           <p class="card-label">Coverage</p>
           <div class="chip-grid">
-            <span class="chip">4H</span>
             <span class="chip">Daily</span>
             <span class="chip">Weekly</span>
+            <span class="chip">TP1 20 EMA</span>
             <span class="chip">RSI Divergence</span>
             <span class="chip">Live Tape</span>
             <span class="chip">Sector Sentiment</span>
@@ -113,17 +113,17 @@
           <article class="metric-card panel-card">
             <span class="metric-label">Actionable Matches</span>
             <strong id="metricMatches">-</strong>
-            <small>Stocks currently near or inside HTF zones</small>
+            <small>Current board results after filters</small>
           </article>
           <article class="metric-card panel-card">
-            <span class="metric-label">Bullish Divergences</span>
-            <strong id="metricBullish">-</strong>
-            <small>Detected in the displayed stock results</small>
+            <span class="metric-label">Daily Setups</span>
+            <strong id="metricDaily">-</strong>
+            <small>Execution-ready Daily board candidates</small>
           </article>
           <article class="metric-card panel-card">
-            <span class="metric-label">Index Futures</span>
-            <strong id="metricIndices">-</strong>
-            <small>Tracked index instruments on the dashboard</small>
+            <span class="metric-label">Weekly Setups</span>
+            <strong id="metricWeekly">-</strong>
+            <small>Higher-timeframe Weekly board candidates</small>
           </article>
         </section>
 
@@ -169,12 +169,11 @@
                 </select>
               </label>
               <label class="mini-control">
-                <span>Timeframe</span>
-                <select id="timeframeFilter">
+                <span>Liquidity</span>
+                <select id="liquidityFilter">
                   <option value="all">All</option>
-                  <option value="4H">4H</option>
-                  <option value="Daily">Daily</option>
-                  <option value="Weekly">Weekly</option>
+                  <option value="sweep">Sweep confirmed</option>
+                  <option value="none">No sweep</option>
                 </select>
               </label>
               <label class="mini-control">
@@ -201,30 +200,83 @@
               </label>
             </div>
 
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Instrument</th>
-                    <th>TF</th>
-                    <th>Bias</th>
-                    <th>Last</th>
-                    <th>Order Block</th>
-                    <th>Distance</th>
-                    <th>Liquidity</th>
-                    <th>Divergence</th>
-                    <th>Plan</th>
-                    <th>R:R</th>
-                    <th>Quality</th>
-                    <th>Score</th>
-                  </tr>
-                </thead>
-                <tbody id="stocksBody">
-                  <tr>
-                    <td colspan="12" class="empty-state">Run a scan to populate the terminal.</td>
-                  </tr>
-                </tbody>
-              </table>
+            <div class="desk-summary">
+              <article class="desk-summary-card">
+                <span class="desk-summary-label">Execution Model</span>
+                <strong>Daily and Weekly only</strong>
+                <small>The live terminal focuses on cleaner HTF execution and avoids noisy 4H-only triggers.</small>
+              </article>
+              <article class="desk-summary-card">
+                <span class="desk-summary-label">Profit Logic</span>
+                <strong>TP1 anchors to the 20 EMA</strong>
+                <small>TP1 is the mean-reversion objective, while TP2 still tracks the larger structure extension.</small>
+              </article>
+            </div>
+
+            <div class="desk-grid">
+              <section class="scan-desk">
+                <div class="desk-header">
+                  <div>
+                    <p class="card-label">Daily Desk</p>
+                    <h4>Daily Execution Scan</h4>
+                  </div>
+                  <span id="dailyCount" class="desk-count">0 setups</span>
+                </div>
+                <div class="table-wrap compact-table-wrap">
+                  <table class="compact-table">
+                    <thead>
+                      <tr>
+                        <th>Instrument</th>
+                        <th>Bias</th>
+                        <th>Last</th>
+                        <th>Order Block</th>
+                        <th>Distance</th>
+                        <th>Plan</th>
+                        <th>Quality</th>
+                        <th>R:R</th>
+                        <th>Score</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dailyBody">
+                      <tr>
+                        <td colspan="9" class="empty-state">Run a scan to populate the Daily board.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section class="scan-desk">
+                <div class="desk-header">
+                  <div>
+                    <p class="card-label">Weekly Desk</p>
+                    <h4>Weekly Structure Scan</h4>
+                  </div>
+                  <span id="weeklyCount" class="desk-count">0 setups</span>
+                </div>
+                <div class="table-wrap compact-table-wrap">
+                  <table class="compact-table">
+                    <thead>
+                      <tr>
+                        <th>Instrument</th>
+                        <th>Bias</th>
+                        <th>Last</th>
+                        <th>Order Block</th>
+                        <th>Distance</th>
+                        <th>Plan</th>
+                        <th>Quality</th>
+                        <th>R:R</th>
+                        <th>Score</th>
+                      </tr>
+                    </thead>
+                    <tbody id="weeklyBody">
+                      <tr>
+                        <td colspan="9" class="empty-state">Run a scan to populate the Weekly board.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             </div>
           </section>
 
@@ -259,14 +311,14 @@
           <section class="chart-panel panel-card">
             <div class="panel-head">
               <div>
-                <p class="card-label">Trade Model</p>
-                <h3>How To Read This Terminal</h3>
+                <p class="card-label">Execution Framework</p>
+                <h3>How The Terminal Ranks Trades</h3>
               </div>
             </div>
             <div class="guide-grid">
               <div class="guide-item">
                 <span class="label">Bias</span>
-                <p>Bullish or bearish direction from the detected order block.</p>
+                <p>Daily and Weekly order blocks set the directional context. The terminal is now optimized for higher-timeframe trades only.</p>
               </div>
               <div class="guide-item">
                 <span class="label">Liquidity</span>
@@ -274,11 +326,11 @@
               </div>
               <div class="guide-item">
                 <span class="label">Trade Quality</span>
-                <p>The live board can show `B` watchlist setups again, while `A / A+ / S` remain the higher-conviction execution tiers.</p>
+                <p>`A / A+ / S` remain the real execution tiers, while `B` stays on the live board only as a watchlist candidate.</p>
               </div>
               <div class="guide-item">
-                <span class="label">Plan</span>
-                <p>The live scanner uses your selected distance tolerance, but the backtest stays stricter so probability stats don’t get inflated by loose watchlist setups.</p>
+                <span class="label">Plan Logic</span>
+                <p>TP1 is the 20 EMA mean-reversion target, TP2 is the larger structure target, and the backtest stays stricter than the discovery board.</p>
               </div>
             </div>
           </section>

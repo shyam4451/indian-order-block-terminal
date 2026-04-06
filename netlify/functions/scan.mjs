@@ -1,7 +1,6 @@
 const NSE_EQUITY_CSV_URL = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv";
 
 const TIMEFRAMES = [
-  { name: "4H", interval: "1h", range: "60d", synthetic4h: true },
   { name: "Daily", interval: "1d", range: "2y" },
   { name: "Weekly", interval: "1wk", range: "5y" }
 ];
@@ -83,7 +82,6 @@ const SECTOR_MAP = {
 };
 
 const BACKTEST_BAR_LIMITS = {
-  "4H": 15,
   Daily: 20,
   Weekly: 12
 };
@@ -569,7 +567,7 @@ function distanceToZone(price, zoneLow, zoneHigh) {
 }
 
 function scoreMatch(distancePct, timeframe, divergence) {
-  const timeframeWeight = { "4H": 1.0, Daily: 1.5, Weekly: 2.0 }[timeframe] || 1.0;
+  const timeframeWeight = { Daily: 1.5, Weekly: 2.0 }[timeframe] || 1.0;
   const divergenceBonus = divergence ? 1 : 0;
   return Math.max(0, 5 - distancePct) * timeframeWeight + divergenceBonus;
 }
@@ -590,18 +588,22 @@ function nearestOpposingTarget(rows, direction, lookback = 30, level = 1) {
 
 function buildTradePlan({ direction, zoneLow, zoneHigh, currentPrice, rows }) {
   const zoneWidth = Math.max(0.01, zoneHigh - zoneLow);
-  const buffer = Math.max(zoneWidth * 0.12, currentPrice * 0.0025);
+  const buffer = Math.max(zoneWidth * 0.08, currentPrice * 0.0018);
+  const closes = rows.map((row) => row.close);
+  const ema20Series = computeEma(closes, 20);
+  const ema20 = ema20Series[ema20Series.length - 1] || currentPrice;
 
   if (direction === "bullish") {
     const entry = zoneHigh;
     const stopLoss = zoneLow - buffer;
-    const takeProfit1 = nearestOpposingTarget(rows, direction, 25, 1) || entry + zoneWidth * 2;
+    const emaTarget = ema20 > entry ? ema20 : null;
+    const takeProfit1 = emaTarget || nearestOpposingTarget(rows, direction, 25, 1) || entry + zoneWidth * 1.5;
     const takeProfit2 = nearestOpposingTarget(rows, direction, 50, 2) || entry + zoneWidth * 4;
     const risk = Math.max(0.01, entry - stopLoss);
     return {
       entry: Number(entry.toFixed(2)),
       stopLoss: Number(stopLoss.toFixed(2)),
-      takeProfit1: Number(Math.max(takeProfit1, entry + zoneWidth).toFixed(2)),
+      takeProfit1: Number(Math.max(takeProfit1, entry + zoneWidth * 0.6).toFixed(2)),
       takeProfit2: Number(Math.max(takeProfit2, takeProfit1).toFixed(2)),
       riskReward1: Number(((Math.max(takeProfit1, entry) - entry) / risk).toFixed(2)),
       riskReward2: Number(((Math.max(takeProfit2, entry) - entry) / risk).toFixed(2))
@@ -610,13 +612,14 @@ function buildTradePlan({ direction, zoneLow, zoneHigh, currentPrice, rows }) {
 
   const entry = zoneLow;
   const stopLoss = zoneHigh + buffer;
-  const takeProfit1 = nearestOpposingTarget(rows, direction, 25, 1) || entry - zoneWidth * 2;
+  const emaTarget = ema20 < entry ? ema20 : null;
+  const takeProfit1 = emaTarget || nearestOpposingTarget(rows, direction, 25, 1) || entry - zoneWidth * 1.5;
   const takeProfit2 = nearestOpposingTarget(rows, direction, 50, 2) || entry - zoneWidth * 4;
   const risk = Math.max(0.01, stopLoss - entry);
   return {
     entry: Number(entry.toFixed(2)),
     stopLoss: Number(stopLoss.toFixed(2)),
-    takeProfit1: Number(Math.min(takeProfit1, entry - zoneWidth).toFixed(2)),
+    takeProfit1: Number(Math.min(takeProfit1, entry - zoneWidth * 0.6).toFixed(2)),
     takeProfit2: Number(Math.min(takeProfit2, takeProfit1).toFixed(2)),
     riskReward1: Number(((entry - Math.min(takeProfit1, entry)) / risk).toFixed(2)),
     riskReward2: Number(((entry - Math.min(takeProfit2, entry)) / risk).toFixed(2))
@@ -870,34 +873,26 @@ function evaluateTradeOutcome(signal, futureRows, timeframeName) {
     if (signal.direction === "bullish") {
       const hitStop = row.low <= signal.stopLoss;
       const hitTp1 = row.high >= signal.takeProfit1;
-      const hitTp2 = row.high >= signal.takeProfit2;
       if (hitStop && hitTp1) {
         return { status: "loss", realizedR: -1, tp2Hit: false };
       }
       if (hitStop) {
         return { status: "loss", realizedR: -1, tp2Hit: false };
       }
-      if (hitTp2) {
-        return { status: "win", realizedR: signal.riskReward2, tp2Hit: true };
-      }
       if (hitTp1) {
-        return { status: "win", realizedR: signal.riskReward1, tp2Hit: false };
+        return { status: "win", realizedR: signal.riskReward1, tp2Hit: row.high >= signal.takeProfit2 };
       }
     } else {
       const hitStop = row.high >= signal.stopLoss;
       const hitTp1 = row.low <= signal.takeProfit1;
-      const hitTp2 = row.low <= signal.takeProfit2;
       if (hitStop && hitTp1) {
         return { status: "loss", realizedR: -1, tp2Hit: false };
       }
       if (hitStop) {
         return { status: "loss", realizedR: -1, tp2Hit: false };
       }
-      if (hitTp2) {
-        return { status: "win", realizedR: signal.riskReward2, tp2Hit: true };
-      }
       if (hitTp1) {
-        return { status: "win", realizedR: signal.riskReward1, tp2Hit: false };
+        return { status: "win", realizedR: signal.riskReward1, tp2Hit: row.low <= signal.takeProfit2 };
       }
     }
   }
@@ -986,7 +981,7 @@ async function backtestUniverse(symbols, options = {}) {
 
   return {
     sampleSymbols: sampleSymbols.length,
-    note: "Historical backtest remains stricter than the live scanner: trend alignment, tighter near-zone tolerance, quality-ranked confirmation, liquidity support, and the same TP/SL rules.",
+    note: "Historical backtest uses Daily and Weekly execution only. TP1 is the 20 EMA mean-reversion target, with tighter stops and stricter quality filters than the live board.",
     overall,
     byTimeframe,
     byQuality

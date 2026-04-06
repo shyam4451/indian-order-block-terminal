@@ -404,6 +404,71 @@ body::before {
   background: rgba(4, 10, 16, 0.62);
 }
 
+.desk-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.desk-summary-card,
+.scan-desk {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.desk-summary-card {
+  padding: 14px 16px;
+}
+
+.desk-summary-label,
+.desk-count {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.desk-summary-label {
+  color: var(--accent);
+}
+
+.desk-summary-card strong,
+.desk-header h4 {
+  display: block;
+  margin: 8px 0 6px;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1rem;
+}
+
+.desk-summary-card small,
+.desk-count {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.desk-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.scan-desk {
+  padding: 14px;
+}
+
+.desk-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.desk-header h4 {
+  margin-bottom: 0;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -442,6 +507,23 @@ tbody tr:hover {
 
 .interactive-row {
   cursor: pointer;
+}
+
+.compact-table-wrap {
+  border-radius: 16px;
+}
+
+.compact-table th,
+.compact-table td {
+  padding: 12px 13px;
+}
+
+.compact-table th {
+  font-size: 0.72rem;
+}
+
+.compact-table td {
+  font-size: 0.86rem;
 }
 
 .stock-cell {
@@ -517,14 +599,6 @@ tbody tr:hover {
 .plan-cell span:first-child {
   color: var(--text);
   font-weight: 700;
-}
-
-.chart-container {
-  min-height: 640px;
-  overflow: hidden;
-  border-radius: 18px;
-  border: 1px solid var(--line);
-  background: #050b10;
 }
 
 .guide-grid {
@@ -726,7 +800,12 @@ tbody tr:hover {
 }
 
 @media (max-width: 1380px) {
-  .workspace-grid {
+.workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .desk-grid,
+  .desk-summary {
     grid-template-columns: 1fr;
   }
 
@@ -778,6 +857,12 @@ tbody tr:hover {
   }
 
   .filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .desk-grid,
+  .desk-summary,
+  .indices-grid {
     grid-template-columns: 1fr;
   }
 

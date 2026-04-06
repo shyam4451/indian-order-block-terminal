@@ -7,9 +7,12 @@ const elements = {
   minTimeframes: document.getElementById("minTimeframes"),
   metricScanned: document.getElementById("metricScanned"),
   metricMatches: document.getElementById("metricMatches"),
-  metricBullish: document.getElementById("metricBullish"),
-  metricIndices: document.getElementById("metricIndices"),
-  stocksBody: document.getElementById("stocksBody"),
+  metricDaily: document.getElementById("metricDaily"),
+  metricWeekly: document.getElementById("metricWeekly"),
+  dailyBody: document.getElementById("dailyBody"),
+  weeklyBody: document.getElementById("weeklyBody"),
+  dailyCount: document.getElementById("dailyCount"),
+  weeklyCount: document.getElementById("weeklyCount"),
   indicesGrid: document.getElementById("indicesGrid"),
   scanMeta: document.getElementById("scanMeta"),
   marketTape: document.getElementById("marketTape"),
@@ -25,7 +28,7 @@ const elements = {
   biasFilter: document.getElementById("biasFilter"),
   divergenceFilter: document.getElementById("divergenceFilter"),
   zoneFilter: document.getElementById("zoneFilter"),
-  timeframeFilter: document.getElementById("timeframeFilter"),
+  liquidityFilter: document.getElementById("liquidityFilter"),
   qualityFilter: document.getElementById("qualityFilter"),
   sortBy: document.getElementById("sortBy")
 };
@@ -89,7 +92,7 @@ function buildFilteredStocks() {
     bias: elements.biasFilter.value,
     divergence: elements.divergenceFilter.value,
     zone: elements.zoneFilter.value,
-    timeframe: elements.timeframeFilter.value,
+    liquidity: elements.liquidityFilter.value,
     quality: elements.qualityFilter.value,
     sortBy: elements.sortBy.value
   };
@@ -99,7 +102,8 @@ function buildFilteredStocks() {
     if (filters.divergence !== "all" && (row.divergence || "none") !== filters.divergence) return false;
     if (filters.zone === "inside" && row.insideZone !== "yes") return false;
     if (filters.zone === "near" && row.insideZone !== "no") return false;
-    if (filters.timeframe !== "all" && row.timeframe !== filters.timeframe) return false;
+    if (filters.liquidity === "sweep" && !row.liquiditySweepConfirmed) return false;
+    if (filters.liquidity === "none" && row.liquiditySweepConfirmed) return false;
     if (filters.quality !== "all" && row.tradeQuality !== filters.quality) return false;
     return true;
   });
@@ -128,9 +132,7 @@ function buildFilteredStocks() {
 function stockRowMarkup(row) {
   const divergence = row.divergence || "none";
   const biasClass = row.direction === "bullish" ? "bullish" : "bearish";
-  const divergenceTone = divergenceClass(divergence);
   const distanceClass = row.insideZone === "yes" ? "inside-yes" : "inside-no";
-  const sweepClass = row.liquiditySweepConfirmed ? "bullish" : "neutral";
   const qualityTone = qualityClass(row.tradeQuality);
 
   return `
@@ -138,10 +140,9 @@ function stockRowMarkup(row) {
       <td>
         <div class="stock-cell">
           <span class="stock-symbol">${row.symbol}</span>
-          <span class="stock-subline">${row.matchedTimeframes} timeframes aligned</span>
+          <span class="stock-subline">${divergence} divergence | ${row.liquiditySweepConfirmed ? "sweep" : "no sweep"}</span>
         </div>
       </td>
-      <td>${row.timeframe}</td>
       <td><span class="badge ${biasClass}">${row.direction}</span></td>
       <td>${formatNumber(row.currentPrice)}</td>
       <td>
@@ -156,8 +157,6 @@ function stockRowMarkup(row) {
           <span class="distance-state ${distanceClass}">${row.insideZone === "yes" ? "inside zone" : "near zone"}</span>
         </div>
       </td>
-      <td><span class="badge ${sweepClass}">${row.liquiditySweepConfirmed ? "sweep" : "none"}</span></td>
-      <td><span class="badge ${divergenceTone}">${divergence}</span></td>
       <td>
         <div class="plan-cell">
           <span>E ${formatNumber(row.entry)}</span>
@@ -165,13 +164,13 @@ function stockRowMarkup(row) {
           <span>TP1 ${formatNumber(row.takeProfit1)}</span>
         </div>
       </td>
+      <td><span class="badge ${qualityTone}">${row.tradeQuality}</span></td>
       <td>
         <div class="plan-cell">
-          <span>TP2 ${formatNumber(row.takeProfit2)}</span>
           <span>1:${formatNumber(row.riskReward1)}</span>
+          <span class="zone-date">TP2 ${formatNumber(row.takeProfit2)}</span>
         </div>
       </td>
-      <td><span class="badge ${qualityTone}">${row.tradeQuality}</span></td>
       <td><span class="score-pill">${formatNumber(row.score)}</span></td>
     </tr>
   `;
@@ -270,13 +269,15 @@ function analyticsRowMarkup(item, labelKey) {
   `;
 }
 
-function renderStocks(rows) {
+function renderDesk(rows, target, countTarget, timeframeLabel) {
   if (!rows.length) {
-    elements.stocksBody.innerHTML = '<tr><td colspan="12" class="empty-state">No setups matched the current filters.</td></tr>';
+    target.innerHTML = `<tr><td colspan="9" class="empty-state">No ${timeframeLabel} setups matched the current filters.</td></tr>`;
+    countTarget.textContent = "0 setups";
     return;
   }
 
-  elements.stocksBody.innerHTML = rows.map(stockRowMarkup).join("");
+  target.innerHTML = rows.map(stockRowMarkup).join("");
+  countTarget.textContent = `${rows.length} setup${rows.length === 1 ? "" : "s"}`;
 }
 
 function renderIndices(rows) {
@@ -312,10 +313,12 @@ function renderSectorSentiment(rows) {
 }
 
 function renderMetrics(payload, filteredStocks) {
+  const dailySetups = filteredStocks.filter((item) => item.timeframe === "Daily");
+  const weeklySetups = filteredStocks.filter((item) => item.timeframe === "Weekly");
   elements.metricScanned.textContent = payload.meta.scannedSymbols ?? "-";
   elements.metricMatches.textContent = filteredStocks.length;
-  elements.metricBullish.textContent = filteredStocks.filter((item) => item.divergence === "bullish").length;
-  elements.metricIndices.textContent = payload.indices.length;
+  elements.metricDaily.textContent = dailySetups.length;
+  elements.metricWeekly.textContent = weeklySetups.length;
   elements.scanMeta.textContent = `Updated ${new Date(payload.generatedAt).toLocaleString("en-IN")} | Universe: ${payload.meta.universeLabel}`;
 }
 
@@ -347,8 +350,11 @@ function refreshView() {
     return;
   }
   const filteredStocks = buildFilteredStocks();
+  const dailyStocks = filteredStocks.filter((item) => item.timeframe === "Daily");
+  const weeklyStocks = filteredStocks.filter((item) => item.timeframe === "Weekly");
   renderMetrics(state.latestPayload, filteredStocks);
-  renderStocks(filteredStocks);
+  renderDesk(dailyStocks, elements.dailyBody, elements.dailyCount, "Daily");
+  renderDesk(weeklyStocks, elements.weeklyBody, elements.weeklyCount, "Weekly");
   renderIndices(state.latestPayload.indices || []);
   renderTape(state.latestPayload.marketTape || []);
   renderNews(state.latestPayload.news || []);
@@ -379,7 +385,10 @@ async function runScan() {
   } catch (error) {
     console.error(error);
     elements.scanMeta.textContent = "Scan failed. Check your function logs and data source access.";
-    elements.stocksBody.innerHTML = '<tr><td colspan="12" class="empty-state">The scan failed. See browser console or Netlify function logs.</td></tr>';
+    elements.dailyBody.innerHTML = '<tr><td colspan="9" class="empty-state">The scan failed. See browser console or Netlify function logs.</td></tr>';
+    elements.weeklyBody.innerHTML = '<tr><td colspan="9" class="empty-state">The scan failed. See browser console or Netlify function logs.</td></tr>';
+    elements.dailyCount.textContent = "0 setups";
+    elements.weeklyCount.textContent = "0 setups";
     elements.indicesGrid.innerHTML = '<div class="empty-state">Could not load indices right now.</div>';
     elements.newsFeed.innerHTML = '<div class="empty-state">Could not load news right now.</div>';
     elements.sectorSentiment.innerHTML = '<div class="empty-state">Could not load sector sentiment right now.</div>';
@@ -392,7 +401,7 @@ async function runScan() {
 }
 
 elements.scanButton.addEventListener("click", runScan);
-[elements.biasFilter, elements.divergenceFilter, elements.zoneFilter, elements.timeframeFilter, elements.qualityFilter, elements.sortBy]
+[elements.biasFilter, elements.divergenceFilter, elements.zoneFilter, elements.liquidityFilter, elements.qualityFilter, elements.sortBy]
   .forEach((element) => {
     element.addEventListener("change", refreshView);
   });
