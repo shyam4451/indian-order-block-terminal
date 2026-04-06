@@ -626,7 +626,7 @@ function buildTradePlan({ direction, zoneLow, zoneHigh, currentPrice, rows }) {
 function classifyTradeQuality(match) {
   const divergenceAligned = match.divergence && match.divergence === match.direction;
   const inZone = match.insideZone === "yes";
-  const nearZone = match.distancePct <= 0.35;
+  const nearZone = match.distancePct <= match.maxDistancePct;
   const strongRR = match.riskReward1 >= 2;
   const strongConfluence = match.matchedTimeframes >= 2;
   const sweepConfirmed = match.liquiditySweepConfirmed;
@@ -671,7 +671,7 @@ function classifyTradeQuality(match) {
 function classifyHistoricalQuality(match) {
   const divergenceAligned = match.divergence && match.divergence === match.direction;
   const inZone = match.insideZone === "yes";
-  const nearZone = match.distancePct <= 0.35;
+  const nearZone = match.distancePct <= match.maxDistancePct;
   const strongRR = match.riskReward1 >= 2;
   const sweepConfirmed = match.liquiditySweepConfirmed;
   const trendAligned = match.trendAligned;
@@ -699,7 +699,8 @@ async function scanInstrument(symbol, options = {}) {
     tvSymbol = `NSE:${symbol.replace(".NS", "")}`,
     cashTvSymbol = tvSymbol,
     proximity = 1,
-    impulse = 1.5
+    impulse = 1.5,
+    liveMode = true
   } = options;
 
   const matches = [];
@@ -720,7 +721,7 @@ async function scanInstrument(symbol, options = {}) {
 
     zones.forEach((zone) => {
       const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
-      if (insideZone === "yes" || distancePct <= 0.35) {
+      if (insideZone === "yes" || distancePct <= proximity) {
         const liquiditySweep = detectLiquiditySweep(rows, zone.direction);
         const freshness = assessZoneFreshness(rows, zone);
         const trendAligned = detectTrendAlignment(rows, zone.direction);
@@ -743,6 +744,7 @@ async function scanInstrument(symbol, options = {}) {
           zoneLow: Number(zone.zoneLow.toFixed(2)),
           zoneHigh: Number(zone.zoneHigh.toFixed(2)),
           distancePct: Number(distancePct.toFixed(2)),
+          maxDistancePct: proximity,
           insideZone,
           divergence: divergence?.type || null,
           formedAt: zone.formedAt,
@@ -778,7 +780,8 @@ async function scanInstrument(symbol, options = {}) {
         ...best,
         matchedTimeframes: matches.length + 1
       });
-      if (["S", "A+", "A"].includes(tradeQuality)) {
+      const allowedQualities = liveMode ? ["S", "A+", "A", "B"] : ["S", "A+", "A"];
+      if (allowedQualities.includes(tradeQuality)) {
         best.tradeQuality = tradeQuality;
         best.qualityRank = QUALITY_RANK[tradeQuality] || 0;
         matches.push(best);
@@ -802,7 +805,7 @@ function findNearestBacktestSignal(rows, timeframeName, impulse, proximity, inde
 
   zones.forEach((zone) => {
     const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
-    if (insideZone === "yes" || distancePct <= 0.35) {
+    if (insideZone === "yes" || distancePct <= proximity) {
       const liquiditySweep = detectLiquiditySweep(historical, zone.direction);
       const freshness = assessZoneFreshness(historical, zone);
       const trendAligned = detectTrendAlignment(historical, zone.direction);
@@ -821,6 +824,7 @@ function findNearestBacktestSignal(rows, timeframeName, impulse, proximity, inde
         zoneLow: Number(zone.zoneLow.toFixed(2)),
         zoneHigh: Number(zone.zoneHigh.toFixed(2)),
         distancePct: Number(distancePct.toFixed(2)),
+        maxDistancePct: proximity,
         insideZone,
         divergence: divergence?.type || null,
         formedAt: zone.formedAt,
@@ -940,7 +944,13 @@ async function backtestUniverse(symbols, options = {}) {
       }
 
       for (let index = 60; index < rows.length - 2; index += 1) {
-        const signal = findNearestBacktestSignal(rows, timeframe.name, options.impulse, options.proximity, index);
+        const signal = findNearestBacktestSignal(
+          rows,
+          timeframe.name,
+          options.impulse,
+          Math.min(options.proximity, 0.4),
+          index
+        );
         if (!signal) {
           continue;
         }
@@ -976,7 +986,7 @@ async function backtestUniverse(symbols, options = {}) {
 
   return {
     sampleSymbols: sampleSymbols.length,
-    note: "Historical backtest uses a stricter but tradable execution model: trend alignment, near/inside-zone entries, quality-ranked confirmation, liquidity support, and the same TP/SL rules.",
+    note: "Historical backtest remains stricter than the live scanner: trend alignment, tighter near-zone tolerance, quality-ranked confirmation, liquidity support, and the same TP/SL rules.",
     overall,
     byTimeframe,
     byQuality
