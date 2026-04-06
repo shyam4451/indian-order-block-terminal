@@ -134,70 +134,87 @@ function stockCardMarkup(row) {
   const biasClass = row.direction === "bullish" ? "bullish" : "bearish";
   const distanceClass = row.insideZone === "yes" ? "inside-yes" : "inside-no";
   const qualityTone = qualityClass(row.tradeQuality);
+  const sweepTone = row.liquiditySweepConfirmed ? "bullish" : "muted";
+  const zoneState = row.insideZone === "yes" ? "inside zone" : "near zone";
 
   return `
     <article class="setup-card">
       <div class="setup-top">
-        <div class="setup-header-copy">
-          <div class="stock-cell">
-            <span class="stock-symbol">${row.symbol}</span>
-            <span class="stock-subline">Formed ${formatDate(row.formedAt)} | ${divergence} divergence</span>
-          </div>
-          <div class="setup-chip-line">
-            <span class="badge ${biasClass}">${row.direction}</span>
-            <span class="badge ${qualityTone}">${row.tradeQuality}</span>
-            <span class="badge ${row.liquiditySweepConfirmed ? "bullish" : "muted"}">
-              ${row.liquiditySweepConfirmed ? "sweep" : "no sweep"}
-            </span>
-          </div>
+        <div class="setup-ident">
+          <span class="stock-symbol">${row.symbol}</span>
+          <span class="stock-subline">${row.timeframe} setup • formed ${formatDate(row.formedAt)}</span>
         </div>
-        <div class="setup-score-panel">
-          <span class="setup-label">Score</span>
-          <strong>${formatNumber(row.score)}</strong>
-          <small>1:${formatNumber(row.riskReward1)} R:R</small>
+        <div class="setup-chip-line">
+          <span class="badge ${biasClass}">${row.direction}</span>
+          <span class="badge ${qualityTone}">${row.tradeQuality}</span>
+          <span class="badge ${sweepTone}">${row.liquiditySweepConfirmed ? "sweep" : "no sweep"}</span>
         </div>
       </div>
 
-      <div class="setup-summary-grid">
-        <div class="setup-metric">
+      <div class="setup-strip">
+        <div class="strip-item">
           <span class="setup-label">Last</span>
           <strong>${formatNumber(row.currentPrice)}</strong>
         </div>
-        <div class="setup-metric">
+        <div class="strip-item">
           <span class="setup-label">Distance</span>
           <strong class="${distanceClass}">${formatNumber(row.distancePct)}%</strong>
-          <small class="${distanceClass}">${row.insideZone === "yes" ? "inside zone" : "near zone"}</small>
+          <small class="${distanceClass}">${zoneState}</small>
         </div>
-        <div class="setup-metric">
-          <span class="setup-label">Order Block</span>
-          <strong>${formatNumber(row.zoneLow)} - ${formatNumber(row.zoneHigh)}</strong>
+        <div class="strip-item">
+          <span class="setup-label">Score</span>
+          <strong>${formatNumber(row.score)}</strong>
         </div>
-        <div class="setup-metric">
-          <span class="setup-label">Context</span>
-          <strong>${row.timeframe}</strong>
-          <small>${row.matchedTimeframes} timeframe match</small>
+        <div class="strip-item">
+          <span class="setup-label">R:R</span>
+          <strong>1:${formatNumber(row.riskReward1)}</strong>
         </div>
       </div>
 
-      <div class="setup-plan-grid">
-        <div class="setup-plan-card">
-          <span class="setup-label">Entry</span>
-          <strong>${formatNumber(row.entry)}</strong>
-        </div>
-        <div class="setup-plan-card">
-          <span class="setup-label">Stop Loss</span>
-          <strong>${formatNumber(row.stopLoss)}</strong>
-        </div>
-        <div class="setup-plan-card">
-          <span class="setup-label">TP1</span>
-          <strong>${formatNumber(row.takeProfit1)}</strong>
-          <small>20 EMA</small>
-        </div>
-        <div class="setup-plan-card">
-          <span class="setup-label">TP2</span>
-          <strong>${formatNumber(row.takeProfit2)}</strong>
-          <small>structure target</small>
-        </div>
+      <div class="setup-columns">
+        <section class="setup-panel">
+          <span class="setup-label">Zone</span>
+          <div class="setup-kv">
+            <span>Order Block</span>
+            <strong>${formatNumber(row.zoneLow)} - ${formatNumber(row.zoneHigh)}</strong>
+          </div>
+          <div class="setup-kv">
+            <span>Divergence</span>
+            <strong>${divergence}</strong>
+          </div>
+          <div class="setup-kv">
+            <span>Context</span>
+            <strong>${row.matchedTimeframes} timeframe match</strong>
+          </div>
+        </section>
+
+        <section class="setup-panel">
+          <span class="setup-label">Trade Plan</span>
+          <div class="setup-kv">
+            <span>Entry</span>
+            <strong>${formatNumber(row.entry)}</strong>
+          </div>
+          <div class="setup-kv">
+            <span>Stop Loss</span>
+            <strong>${formatNumber(row.stopLoss)}</strong>
+          </div>
+          <div class="setup-kv">
+            <span>TP1</span>
+            <strong>${formatNumber(row.takeProfit1)}</strong>
+            <small>20 EMA target</small>
+          </div>
+          <div class="setup-kv">
+            <span>TP2</span>
+            <strong>${formatNumber(row.takeProfit2)}</strong>
+            <small>structure target</small>
+          </div>
+        </section>
+      </div>
+
+      <div class="setup-footer">
+        <span class="setup-footer-note">Trend aligned: ${row.trendAligned ? "yes" : "no"}</span>
+        <span class="setup-footer-note">First retest: ${row.firstRetestOnly ? "yes" : "no"}</span>
+        <span class="setup-footer-note">Confirmation: ${row.confirmationCandle ? "yes" : "no"}</span>
       </div>
     </article>
   `;

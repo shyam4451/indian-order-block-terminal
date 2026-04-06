@@ -630,7 +630,9 @@ function classifyTradeQuality(match) {
   const divergenceAligned = match.divergence && match.divergence === match.direction;
   const inZone = match.insideZone === "yes";
   const nearZone = match.distancePct <= match.maxDistancePct;
-  const strongRR = match.riskReward1 >= 2;
+  const eliteRR = match.riskReward1 >= 2;
+  const premiumRR = match.riskReward1 >= 1.6;
+  const solidRR = match.riskReward1 >= 1.2;
   const strongConfluence = match.matchedTimeframes >= 2;
   const sweepConfirmed = match.liquiditySweepConfirmed;
   const trendAligned = match.trendAligned;
@@ -641,7 +643,7 @@ function classifyTradeQuality(match) {
     (inZone || nearZone) &&
     strongConfluence &&
     divergenceAligned &&
-    strongRR &&
+    eliteRR &&
     sweepConfirmed &&
     trendAligned &&
     firstRetestOnly &&
@@ -651,8 +653,8 @@ function classifyTradeQuality(match) {
   }
   if (
     (inZone || nearZone) &&
-    strongRR &&
     trendAligned &&
+    premiumRR &&
     (confirmationCandle || firstRetestOnly) &&
     (sweepConfirmed || divergenceAligned)
   ) {
@@ -661,7 +663,7 @@ function classifyTradeQuality(match) {
   if (
     (inZone || nearZone) &&
     trendAligned &&
-    (sweepConfirmed || divergenceAligned || strongConfluence || confirmationCandle)
+    (sweepConfirmed || divergenceAligned || strongConfluence || confirmationCandle || solidRR || firstRetestOnly)
   ) {
     return "A";
   }
@@ -675,19 +677,21 @@ function classifyHistoricalQuality(match) {
   const divergenceAligned = match.divergence && match.divergence === match.direction;
   const inZone = match.insideZone === "yes";
   const nearZone = match.distancePct <= match.maxDistancePct;
-  const strongRR = match.riskReward1 >= 2;
+  const eliteRR = match.riskReward1 >= 2;
+  const premiumRR = match.riskReward1 >= 1.6;
+  const solidRR = match.riskReward1 >= 1.2;
   const sweepConfirmed = match.liquiditySweepConfirmed;
   const trendAligned = match.trendAligned;
   const firstRetestOnly = match.firstRetestOnly;
   const confirmationCandle = match.confirmationCandle;
 
-  if ((inZone || nearZone) && divergenceAligned && strongRR && sweepConfirmed && trendAligned && firstRetestOnly && confirmationCandle) {
+  if ((inZone || nearZone) && divergenceAligned && eliteRR && sweepConfirmed && trendAligned && firstRetestOnly && confirmationCandle) {
     return "S";
   }
-  if ((inZone || nearZone) && strongRR && trendAligned && (confirmationCandle || firstRetestOnly) && (sweepConfirmed || divergenceAligned)) {
+  if ((inZone || nearZone) && premiumRR && trendAligned && (confirmationCandle || firstRetestOnly) && (sweepConfirmed || divergenceAligned)) {
     return "A+";
   }
-  if ((inZone || nearZone) && trendAligned && (divergenceAligned || sweepConfirmed || confirmationCandle)) {
+  if ((inZone || nearZone) && trendAligned && (divergenceAligned || sweepConfirmed || confirmationCandle || solidRR || firstRetestOnly)) {
     return "A";
   }
   if ((inZone || nearZone) && trendAligned) {
