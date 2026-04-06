@@ -332,6 +332,18 @@ function computeRsi(closes, period = 14) {
   return rsi;
 }
 
+function computeEma(values, period = 50) {
+  if (!values.length) {
+    return [];
+  }
+  const multiplier = 2 / (period + 1);
+  const ema = [values[0]];
+  for (let index = 1; index < values.length; index += 1) {
+    ema.push((values[index] - ema[index - 1]) * multiplier + ema[index - 1]);
+  }
+  return ema;
+}
+
 function pivotLows(values, window = 3) {
   const points = [];
   for (let i = window; i < values.length - window; i += 1) {
@@ -428,6 +440,56 @@ function detectLiquiditySweep(rows, direction, lookback = 12) {
     sweptLevel: null,
     note: "No clear sweep confirmation"
   };
+}
+
+function assessZoneFreshness(rows, zone, maxRetests = 1) {
+  const zoneIndex = rows.findIndex((row) => row.datetime === zone.formedAt);
+  if (zoneIndex === -1) {
+    return {
+      retests: 0,
+      firstRetestOnly: true
+    };
+  }
+
+  let retests = 0;
+  for (let index = zoneIndex + 1; index < rows.length; index += 1) {
+    const row = rows[index];
+    const touched = row.low <= zone.zoneHigh && row.high >= zone.zoneLow;
+    if (touched) {
+      retests += 1;
+    }
+  }
+
+  return {
+    retests,
+    firstRetestOnly: retests <= maxRetests
+  };
+}
+
+function detectTrendAlignment(rows, direction, period = 50) {
+  if (rows.length < period + 5) {
+    return false;
+  }
+  const closes = rows.map((row) => row.close);
+  const ema = computeEma(closes, period);
+  const lastClose = closes[closes.length - 1];
+  const lastEma = ema[ema.length - 1];
+  return direction === "bullish" ? lastClose > lastEma : lastClose < lastEma;
+}
+
+function detectConfirmationCandle(rows, zone, direction) {
+  if (rows.length < 2) {
+    return false;
+  }
+
+  const last = rows[rows.length - 1];
+  const previous = rows[rows.length - 2];
+
+  if (direction === "bullish") {
+    return last.close > last.open && last.close >= zone.zoneHigh && last.close > previous.high;
+  }
+
+  return last.close < last.open && last.close <= zone.zoneLow && last.close < previous.low;
 }
 
 function findOrderBlocks(rows, impulseThreshold = 1.5, lookback = 20, searchBack = 6) {
@@ -567,17 +629,41 @@ function classifyTradeQuality(match) {
   const strongRR = match.riskReward1 >= 2;
   const strongConfluence = match.matchedTimeframes >= 2;
   const sweepConfirmed = match.liquiditySweepConfirmed;
+  const trendAligned = match.trendAligned;
+  const firstRetestOnly = match.firstRetestOnly;
+  const confirmationCandle = match.confirmationCandle;
 
-  if (inZone && strongConfluence && divergenceAligned && strongRR && sweepConfirmed) {
+  if (
+    inZone &&
+    strongConfluence &&
+    divergenceAligned &&
+    strongRR &&
+    sweepConfirmed &&
+    trendAligned &&
+    firstRetestOnly &&
+    confirmationCandle
+  ) {
     return "S";
   }
-  if (inZone && strongConfluence && divergenceAligned && strongRR) {
+  if (
+    inZone &&
+    strongRR &&
+    trendAligned &&
+    confirmationCandle &&
+    firstRetestOnly &&
+    (sweepConfirmed || divergenceAligned)
+  ) {
     return "A+";
   }
-  if ((inZone || match.distancePct <= 0.5) && (strongConfluence || divergenceAligned)) {
+  if (
+    inZone &&
+    trendAligned &&
+    confirmationCandle &&
+    (sweepConfirmed || divergenceAligned || strongConfluence)
+  ) {
     return "A";
   }
-  if (match.distancePct <= 1.2 || strongConfluence) {
+  if (inZone && trendAligned) {
     return "B";
   }
   return "Watch";
@@ -588,17 +674,20 @@ function classifyHistoricalQuality(match) {
   const inZone = match.insideZone === "yes";
   const strongRR = match.riskReward1 >= 2;
   const sweepConfirmed = match.liquiditySweepConfirmed;
+  const trendAligned = match.trendAligned;
+  const firstRetestOnly = match.firstRetestOnly;
+  const confirmationCandle = match.confirmationCandle;
 
-  if (inZone && divergenceAligned && strongRR && sweepConfirmed) {
+  if (inZone && divergenceAligned && strongRR && sweepConfirmed && trendAligned && firstRetestOnly && confirmationCandle) {
     return "S";
   }
-  if (inZone && divergenceAligned && strongRR) {
+  if (inZone && strongRR && trendAligned && confirmationCandle && firstRetestOnly && (sweepConfirmed || divergenceAligned)) {
     return "A+";
   }
-  if ((inZone || match.distancePct <= 0.5) && (divergenceAligned || sweepConfirmed)) {
+  if (inZone && trendAligned && confirmationCandle && (divergenceAligned || sweepConfirmed)) {
     return "A";
   }
-  if (match.distancePct <= 1.2) {
+  if (inZone && trendAligned) {
     return "B";
   }
   return "Watch";
@@ -631,8 +720,11 @@ async function scanInstrument(symbol, options = {}) {
 
     zones.forEach((zone) => {
       const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
-      if (distancePct <= proximity || insideZone === "yes") {
+      if (insideZone === "yes") {
         const liquiditySweep = detectLiquiditySweep(rows, zone.direction);
+        const freshness = assessZoneFreshness(rows, zone);
+        const trendAligned = detectTrendAlignment(rows, zone.direction);
+        const confirmationCandle = detectConfirmationCandle(rows, zone, zone.direction);
         const tradePlan = buildTradePlan({
           direction: zone.direction,
           zoneLow: zone.zoneLow,
@@ -657,6 +749,10 @@ async function scanInstrument(symbol, options = {}) {
           liquiditySweepConfirmed: liquiditySweep?.confirmed || false,
           liquiditySweepNote: liquiditySweep?.note || "No sweep",
           sweptLevel: liquiditySweep?.sweptLevel || null,
+          retests: freshness.retests,
+          firstRetestOnly: freshness.firstRetestOnly,
+          trendAligned,
+          confirmationCandle,
           entry: tradePlan.entry,
           stopLoss: tradePlan.stopLoss,
           takeProfit1: tradePlan.takeProfit1,
@@ -678,7 +774,15 @@ async function scanInstrument(symbol, options = {}) {
     });
 
     if (best) {
-      matches.push(best);
+      const tradeQuality = classifyTradeQuality({
+        ...best,
+        matchedTimeframes: matches.length + 1
+      });
+      if (["S", "A+", "A"].includes(tradeQuality)) {
+        best.tradeQuality = tradeQuality;
+        best.qualityRank = QUALITY_RANK[tradeQuality] || 0;
+        matches.push(best);
+      }
     }
   }
 
@@ -698,8 +802,11 @@ function findNearestBacktestSignal(rows, timeframeName, impulse, proximity, inde
 
   zones.forEach((zone) => {
     const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
-    if (distancePct <= proximity || insideZone === "yes") {
+    if (insideZone === "yes") {
       const liquiditySweep = detectLiquiditySweep(historical, zone.direction);
+      const freshness = assessZoneFreshness(historical, zone);
+      const trendAligned = detectTrendAlignment(historical, zone.direction);
+      const confirmationCandle = detectConfirmationCandle(historical, zone, zone.direction);
       const tradePlan = buildTradePlan({
         direction: zone.direction,
         zoneLow: zone.zoneLow,
@@ -718,6 +825,10 @@ function findNearestBacktestSignal(rows, timeframeName, impulse, proximity, inde
         divergence: divergence?.type || null,
         formedAt: zone.formedAt,
         liquiditySweepConfirmed: liquiditySweep?.confirmed || false,
+        retests: freshness.retests,
+        firstRetestOnly: freshness.firstRetestOnly,
+        trendAligned,
+        confirmationCandle,
         entry: tradePlan.entry,
         stopLoss: tradePlan.stopLoss,
         takeProfit1: tradePlan.takeProfit1,
@@ -736,6 +847,10 @@ function findNearestBacktestSignal(rows, timeframeName, impulse, proximity, inde
   }
 
   const tradeQuality = classifyHistoricalQuality(best);
+  if (!["S", "A+", "A"].includes(tradeQuality)) {
+    return null;
+  }
+
   return {
     ...best,
     tradeQuality,
@@ -861,7 +976,7 @@ async function backtestUniverse(symbols, options = {}) {
 
   return {
     sampleSymbols: sampleSymbols.length,
-    note: "Historical backtest uses the same order-block, divergence, liquidity, and TP/SL rules with a single-timeframe quality proxy.",
+    note: "Historical backtest uses the stricter execution model: inside-zone only, trend alignment, confirmation candle, first-retest preference, liquidity support, and the same TP/SL rules.",
     overall,
     byTimeframe,
     byQuality
