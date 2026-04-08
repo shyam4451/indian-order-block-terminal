@@ -3,121 +3,112 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Order Block Terminal India</title>
+    <title>Indian Order Block Terminal</title>
     <meta
       name="description"
-      content="Scan Indian stocks and major index futures for 4H, Daily, and Weekly order-block proximity with RSI divergence signals."
+      content="Live Indian market scanner for demand and supply zones with liquidity sweep and confirmation logic."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Manrope:wght@400;500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
-    <script src="https://s3.tradingview.com/tv.js"></script>
   </head>
   <body>
     <div class="page-shell">
       <header class="hero">
-        <div class="hero-copy">
-          <p class="eyebrow">Indian Market Scanner</p>
-          <h1>Find stocks and index setups sitting at higher-timeframe order blocks.</h1>
-          <p class="hero-text">
-            This website scans Indian equities plus key index setups for futures traders, checks 4H, Daily, and
-            Weekly order-block proximity, and layers RSI divergence on top.
+        <div>
+          <p class="eyebrow">Indian Order Block Terminal</p>
+          <h1>Demand zones for cash. Demand and supply for F&amp;O and indices.</h1>
+          <p class="hero-copy">
+            The scanner now focuses on cleaner structure: order block location first, then liquidity sweep, then
+            confirmation. RSI divergence is no longer used as a trade trigger.
           </p>
-          <div class="hero-pills">
-            <span>4H / Daily / Weekly</span>
-            <span>NSE stocks</span>
-            <span>Index futures focus</span>
-            <span>TradingView charts</span>
-          </div>
         </div>
-        <div class="hero-panel glass-card">
-          <p class="panel-label">What this version does</p>
-          <ul class="feature-list">
-            <li>Automatically discovers NSE cash-market stocks from the official NSE security list</li>
-            <li>Scans a stock universe or a faster liquid preset</li>
-            <li>Includes a dedicated section for NIFTY, BANKNIFTY, FINNIFTY, and MIDCPNIFTY-style workflows</li>
-            <li>Lets you open the selected setup directly in TradingView</li>
+        <div class="hero-card">
+          <p class="section-label">Scan Logic</p>
+          <ul class="hero-list">
+            <li>Cash universes show bullish demand-side setups only.</li>
+            <li>F&amp;O stocks and indices can show both long and short setups.</li>
+            <li>`Sweep` means price took liquidity and closed back in favor of the setup.</li>
+            <li>`Confirm` means the latest candle followed through after the sweep/zone reaction.</li>
           </ul>
         </div>
       </header>
 
-      <main class="dashboard-grid">
-        <section class="controls-section glass-card">
+      <section class="controls card">
+        <div class="controls-head">
+          <div>
+            <p class="section-label">Scanner Controls</p>
+            <h2>Run live scan</h2>
+          </div>
+          <button id="scanButton" class="primary-button">Run Scan</button>
+        </div>
+
+        <div class="controls-grid">
+          <label class="control">
+            <span>Universe</span>
+            <select id="universe">
+              <option value="nifty50">Nifty 50 cash watchlist</option>
+              <option value="fno">Liquid F&amp;O long / short</option>
+              <option value="all">NSE cash universe</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Max symbols</span>
+            <input id="limit" type="number" min="20" max="500" value="80" />
+          </label>
+          <label class="control">
+            <span>Distance from zone (%)</span>
+            <input id="proximity" type="number" min="0.1" max="5" step="0.1" value="1" />
+          </label>
+          <label class="control">
+            <span>Impulse threshold</span>
+            <input id="impulse" type="number" min="1.1" max="3" step="0.1" value="1.5" />
+          </label>
+          <label class="control">
+            <span>Min matching timeframes</span>
+            <input id="minTimeframes" type="number" min="1" max="3" value="1" />
+          </label>
+        </div>
+
+        <p id="scanMeta" class="meta-text">No scan yet.</p>
+      </section>
+
+      <section class="metrics">
+        <article class="metric card">
+          <span>Scanned</span>
+          <strong id="metricScanned">-</strong>
+        </article>
+        <article class="metric card">
+          <span>Matches</span>
+          <strong id="metricMatches">-</strong>
+        </article>
+        <article class="metric card">
+          <span>Sweeps</span>
+          <strong id="metricSweeps">-</strong>
+        </article>
+        <article class="metric card">
+          <span>Confirmed</span>
+          <strong id="metricConfirmed">-</strong>
+        </article>
+      </section>
+
+      <main class="layout">
+        <section class="card table-card">
           <div class="section-head">
             <div>
-              <p class="section-kicker">Scanner Controls</p>
-              <h2>Run a fresh scan</h2>
+              <p class="section-label">Scanner Board</p>
+              <h2>Live setups</h2>
             </div>
-            <button id="scanButton" class="primary-button">Run Scan</button>
-          </div>
-
-          <div class="controls-grid">
-            <label class="control">
-              <span>Universe</span>
-              <select id="universe">
-                <option value="nifty50">Nifty 50 stocks</option>
-                <option value="fno">Liquid F&O stocks</option>
-                <option value="all">NSE EQ universe</option>
-              </select>
-            </label>
-
-            <label class="control">
-              <span>Max symbols</span>
-              <input id="limit" type="number" min="20" max="500" value="80" />
-            </label>
-
-            <label class="control">
-              <span>Max distance from zone (%)</span>
-              <input id="proximity" type="number" min="0.1" max="5" step="0.1" value="1" />
-            </label>
-
-            <label class="control">
-              <span>Impulse threshold</span>
-              <input id="impulse" type="number" min="1.1" max="3" step="0.1" value="1.5" />
-            </label>
-
-            <label class="control">
-              <span>Minimum matching timeframes</span>
-              <input id="minTimeframes" type="number" min="1" max="3" value="1" />
-            </label>
-          </div>
-
-          <p class="fine-print">
-            For hosting on Netlify, the faster presets are the best default. Full NSE scans can be heavier because
-            serverless functions have time limits.
-          </p>
-        </section>
-
-        <section class="metrics-section">
-          <article class="metric-card glass-card">
-            <span class="metric-label">Scanned</span>
-            <strong id="metricScanned">-</strong>
-          </article>
-          <article class="metric-card glass-card">
-            <span class="metric-label">Matches</span>
-            <strong id="metricMatches">-</strong>
-          </article>
-          <article class="metric-card glass-card">
-            <span class="metric-label">Bullish RSI Divs</span>
-            <strong id="metricBullish">-</strong>
-          </article>
-          <article class="metric-card glass-card">
-            <span class="metric-label">Index Futures</span>
-            <strong id="metricIndices">-</strong>
-          </article>
-        </section>
-
-        <section class="table-section glass-card">
-          <div class="section-head">
-            <div>
-              <p class="section-kicker">Stocks</p>
-              <h2>Automatic stock findings</h2>
+            <div class="legend">
+              <span class="pill bullish">Demand Long</span>
+              <span class="pill bearish">Supply Short</span>
+              <span class="pill neutral">Sweep</span>
+              <span class="pill subtle">Confirm</span>
             </div>
-            <p id="scanMeta" class="scan-meta">No scan yet.</p>
           </div>
           <div class="table-wrap">
             <table>
@@ -125,51 +116,52 @@
                 <tr>
                   <th>Symbol</th>
                   <th>TF</th>
-                  <th>Bias</th>
+                  <th>Setup</th>
                   <th>Price</th>
                   <th>Zone</th>
                   <th>Distance</th>
-                  <th>RSI Div</th>
+                  <th>Sweep</th>
+                  <th>Confirm</th>
                   <th>Score</th>
                   <th>Chart</th>
                 </tr>
               </thead>
               <tbody id="stocksBody">
                 <tr>
-                  <td colspan="9" class="empty-state">Run a scan to load stock setups.</td>
+                  <td colspan="10" class="empty-state">Run a scan to load setups.</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </section>
 
-        <section class="indices-section glass-card">
-          <div class="section-head">
-            <div>
-              <p class="section-kicker">Index Futures</p>
-              <h2>Major index setups for futures traders</h2>
+        <aside class="sidebar">
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <p class="section-label">Index Desk</p>
+                <h2>Index futures</h2>
+              </div>
             </div>
-            <p class="scan-meta">Signals are derived from index data, with TradingView links pointing to futures-friendly charts.</p>
-          </div>
-          <div id="indicesGrid" class="indices-grid">
-            <article class="index-card skeleton-card"></article>
-            <article class="index-card skeleton-card"></article>
-          </div>
-        </section>
+            <div id="indicesGrid" class="index-list">
+              <div class="empty-state">Index setups will appear after the scan.</div>
+            </div>
+          </section>
 
-        <section class="chart-section glass-card">
-          <div class="section-head">
-            <div>
-              <p class="section-kicker">Chart</p>
-              <h2 id="chartTitle">TradingView inspection panel</h2>
-            </div>
-            <a id="chartLink" class="link-button" href="#" target="_blank" rel="noreferrer">Open in TradingView</a>
-          </div>
-          <div id="chartContainer" class="chart-container"></div>
-        </section>
+          <section class="card note-card">
+            <p class="section-label">Important</p>
+            <h2>How to use this version</h2>
+            <ul class="hero-list">
+              <li>Cash stocks are scanned only for bullish demand opportunities.</li>
+              <li>Short setups are limited to F&amp;O stocks and indices.</li>
+              <li>The full NSE cash universe is heavier, so it may be slower than Nifty 50 or F&amp;O.</li>
+              <li>Use the chart link to verify the zone and sweep before taking any trade.</li>
+            </ul>
+          </section>
+        </aside>
       </main>
     </div>
 
     <script type="module" src="./web/app.js"></script>
   </body>
-  </html>
+</html>

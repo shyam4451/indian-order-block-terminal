@@ -26,30 +26,10 @@ const FNO_STOCKS = [
 ];
 
 const INDEX_INSTRUMENTS = [
-  {
-    name: "NIFTY 50",
-    sourceSymbol: "^NSEI",
-    tvSymbol: "NSE:NIFTY1!",
-    cashTvSymbol: "NSE:NIFTY"
-  },
-  {
-    name: "BANK NIFTY",
-    sourceSymbol: "^NSEBANK",
-    tvSymbol: "NSE:BANKNIFTY1!",
-    cashTvSymbol: "NSE:BANKNIFTY"
-  },
-  {
-    name: "FIN NIFTY",
-    sourceSymbol: "NIFTYFINSRV25_50.NS",
-    tvSymbol: "NSE:FINNIFTY1!",
-    cashTvSymbol: "NSE:NIFTYFINSRV25_50"
-  },
-  {
-    name: "MIDCAP NIFTY",
-    sourceSymbol: "NIFTY_MID_SELECT.NS",
-    tvSymbol: "NSE:MIDCPNIFTY1!",
-    cashTvSymbol: "NSE:NIFTY_MID_SELECT"
-  }
+  { name: "NIFTY 50", sourceSymbol: "^NSEI", tvSymbol: "NSE:NIFTY1!", cashTvSymbol: "NSE:NIFTY" },
+  { name: "BANK NIFTY", sourceSymbol: "^NSEBANK", tvSymbol: "NSE:BANKNIFTY1!", cashTvSymbol: "NSE:BANKNIFTY" },
+  { name: "FIN NIFTY", sourceSymbol: "NIFTYFINSRV25_50.NS", tvSymbol: "NSE:FINNIFTY1!", cashTvSymbol: "NSE:NIFTYFINSRV25_50" },
+  { name: "MIDCAP NIFTY", sourceSymbol: "NIFTY_MID_SELECT.NS", tvSymbol: "NSE:MIDCPNIFTY1!", cashTvSymbol: "NSE:NIFTY_MID_SELECT" }
 ];
 
 function csvToRows(text) {
@@ -166,99 +146,6 @@ function rollingAverage(values, window) {
   });
 }
 
-function computeRsi(closes, period = 14) {
-  const gains = [];
-  const losses = [];
-  for (let i = 0; i < closes.length; i += 1) {
-    const delta = i === 0 ? 0 : closes[i] - closes[i - 1];
-    gains.push(Math.max(delta, 0));
-    losses.push(Math.max(-delta, 0));
-  }
-
-  const rsi = Array(closes.length).fill(50);
-  let avgGain = 0;
-  let avgLoss = 0;
-
-  for (let i = 1; i < closes.length; i += 1) {
-    if (i <= period) {
-      avgGain += gains[i];
-      avgLoss += losses[i];
-      if (i === period) {
-        avgGain /= period;
-        avgLoss /= period;
-      }
-      continue;
-    }
-
-    avgGain = ((avgGain * (period - 1)) + gains[i]) / period;
-    avgLoss = ((avgLoss * (period - 1)) + losses[i]) / period;
-    if (avgLoss === 0) {
-      rsi[i] = 100;
-      continue;
-    }
-    const rs = avgGain / avgLoss;
-    rsi[i] = 100 - (100 / (1 + rs));
-  }
-
-  return rsi;
-}
-
-function pivotLows(values, window = 3) {
-  const points = [];
-  for (let i = window; i < values.length - window; i += 1) {
-    const value = values[i];
-    const left = values.slice(i - window, i);
-    const right = values.slice(i + 1, i + window + 1);
-    if (value <= Math.min(...left) && value <= Math.min(...right)) {
-      points.push(i);
-    }
-  }
-  return points;
-}
-
-function pivotHighs(values, window = 3) {
-  const points = [];
-  for (let i = window; i < values.length - window; i += 1) {
-    const value = values[i];
-    const left = values.slice(i - window, i);
-    const right = values.slice(i + 1, i + window + 1);
-    if (value >= Math.max(...left) && value >= Math.max(...right)) {
-      points.push(i);
-    }
-  }
-  return points;
-}
-
-function detectRsiDivergence(rows) {
-  if (rows.length < 40) {
-    return null;
-  }
-
-  const lows = rows.map((row) => row.low);
-  const highs = rows.map((row) => row.high);
-  const rsi = computeRsi(rows.map((row) => row.close));
-  const lowPivots = pivotLows(lows);
-  const highPivots = pivotHighs(highs);
-
-  if (lowPivots.length >= 2) {
-    const first = lowPivots[lowPivots.length - 2];
-    const second = lowPivots[lowPivots.length - 1];
-    if (lows[second] < lows[first] && rsi[second] > rsi[first]) {
-      return { type: "bullish", at: rows[second].datetime };
-    }
-  }
-
-  if (highPivots.length >= 2) {
-    const first = highPivots[highPivots.length - 2];
-    const second = highPivots[highPivots.length - 1];
-    if (highs[second] > highs[first] && rsi[second] < rsi[first]) {
-      return { type: "bearish", at: rows[second].datetime };
-    }
-  }
-
-  return null;
-}
-
 function findOrderBlocks(rows, impulseThreshold = 1.5, lookback = 20, searchBack = 6) {
   if (rows.length < lookback + 10) {
     return [];
@@ -280,7 +167,6 @@ function findOrderBlocks(rows, impulseThreshold = 1.5, lookback = 20, searchBack
     const priorLow = Math.min(...rows.slice(idx - lookback, idx).map((item) => item.low));
     const bullishBreak = row.close > priorHigh && bodies[idx] >= avgRange * impulseThreshold;
     const bearishBreak = row.close < priorLow && bodies[idx] >= avgRange * impulseThreshold;
-
     if (!bullishBreak && !bearishBreak) {
       continue;
     }
@@ -289,24 +175,13 @@ function findOrderBlocks(rows, impulseThreshold = 1.5, lookback = 20, searchBack
     if (bullishBreak) {
       const source = [...candidates].reverse().find((item) => item.close < item.open);
       if (source) {
-        zones.push({
-          direction: "bullish",
-          formedAt: source.datetime,
-          zoneLow: source.low,
-          zoneHigh: source.open
-        });
+        zones.push({ direction: "bullish", formedAt: source.datetime, zoneLow: source.low, zoneHigh: source.open });
       }
     }
-
     if (bearishBreak) {
       const source = [...candidates].reverse().find((item) => item.close > item.open);
       if (source) {
-        zones.push({
-          direction: "bearish",
-          formedAt: source.datetime,
-          zoneLow: source.open,
-          zoneHigh: source.high
-        });
+        zones.push({ direction: "bearish", formedAt: source.datetime, zoneLow: source.open, zoneHigh: source.high });
       }
     }
   }
@@ -321,7 +196,6 @@ function findOrderBlocks(rows, impulseThreshold = 1.5, lookback = 20, searchBack
     seen.add(key);
     unique.push(zone);
   });
-
   return unique.reverse();
 }
 
@@ -335,10 +209,48 @@ function distanceToZone(price, zoneLow, zoneHigh) {
   return { distancePct: ((price - zoneHigh) / price) * 100, insideZone: "no" };
 }
 
-function scoreMatch(distancePct, timeframe, divergence) {
+function detectLiquiditySweep(rows, direction, lookback = 12) {
+  if (rows.length < lookback + 3) {
+    return { confirmed: false };
+  }
+
+  const last = rows[rows.length - 1];
+  const recent = rows.slice(rows.length - lookback - 1, rows.length - 1);
+
+  if (direction === "bullish") {
+    const priorSwingLow = Math.min(...recent.map((item) => item.low));
+    return {
+      confirmed: last.low < priorSwingLow && last.close > priorSwingLow
+    };
+  }
+
+  const priorSwingHigh = Math.max(...recent.map((item) => item.high));
+  return {
+    confirmed: last.high > priorSwingHigh && last.close < priorSwingHigh
+  };
+}
+
+function detectConfirmationCandle(rows, direction) {
+  if (rows.length < 2) {
+    return false;
+  }
+  const last = rows[rows.length - 1];
+  const previous = rows[rows.length - 2];
+
+  if (direction === "bullish") {
+    return last.close > last.open && last.close > previous.close;
+  }
+  return last.close < last.open && last.close < previous.close;
+}
+
+function scoreCandidate(distancePct, timeframe, insideZone, sweepConfirmed, confirmationCandle) {
   const timeframeWeight = { "4H": 1.0, Daily: 1.5, Weekly: 2.0 }[timeframe] || 1.0;
-  const divergenceBonus = divergence ? 1 : 0;
-  return Math.max(0, 5 - distancePct) * timeframeWeight + divergenceBonus;
+  return Number((
+    Math.max(0, 5 - distancePct) * timeframeWeight +
+    (insideZone === "yes" ? 1.25 : 0) +
+    (sweepConfirmed ? 2 : 0) +
+    (confirmationCandle ? 1.25 : 0)
+  ).toFixed(2));
 }
 
 async function scanInstrument(symbol, options = {}) {
@@ -347,12 +259,14 @@ async function scanInstrument(symbol, options = {}) {
     tvSymbol = `NSE:${symbol.replace(".NS", "")}`,
     cashTvSymbol = tvSymbol,
     proximity = 1,
-    impulse = 1.5
+    impulse = 1.5,
+    allowedDirections = ["bullish", "bearish"],
+    timeframes = TIMEFRAMES
   } = options;
 
   const matches = [];
 
-  for (const timeframe of TIMEFRAMES) {
+  for (const timeframe of timeframes) {
     let rows = await fetchYahooCandles(symbol, timeframe.interval, timeframe.range);
     if (timeframe.synthetic4h) {
       rows = buildSynthetic4H(rows);
@@ -362,32 +276,37 @@ async function scanInstrument(symbol, options = {}) {
     }
 
     const currentPrice = rows[rows.length - 1].close;
-    const zones = findOrderBlocks(rows, impulse);
-    const divergence = detectRsiDivergence(rows);
+    const zones = findOrderBlocks(rows, impulse).filter((zone) => allowedDirections.includes(zone.direction));
     let best = null;
 
     zones.forEach((zone) => {
       const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
-      if (distancePct <= proximity || insideZone === "yes") {
-        const candidate = {
-          symbol,
-          name: displayName,
-          tvSymbol,
-          cashTvSymbol,
-          timeframe: timeframe.name,
-          direction: zone.direction,
-          currentPrice,
-          zoneLow: Number(zone.zoneLow.toFixed(2)),
-          zoneHigh: Number(zone.zoneHigh.toFixed(2)),
-          distancePct: Number(distancePct.toFixed(2)),
-          insideZone,
-          divergence: divergence?.type || null,
-          formedAt: zone.formedAt,
-          score: Number(scoreMatch(distancePct, timeframe.name, divergence?.type).toFixed(2))
-        };
-        if (!best || candidate.distancePct < best.distancePct) {
-          best = candidate;
-        }
+      if (!(insideZone === "yes" || distancePct <= proximity)) {
+        return;
+      }
+
+      const sweep = detectLiquiditySweep(rows, zone.direction);
+      const confirmationCandle = detectConfirmationCandle(rows, zone.direction);
+      const candidate = {
+        symbol,
+        name: displayName,
+        tvSymbol,
+        cashTvSymbol,
+        timeframe: timeframe.name,
+        direction: zone.direction,
+        currentPrice: Number(currentPrice.toFixed(2)),
+        zoneLow: Number(zone.zoneLow.toFixed(2)),
+        zoneHigh: Number(zone.zoneHigh.toFixed(2)),
+        distancePct: Number(distancePct.toFixed(2)),
+        insideZone,
+        formedAt: zone.formedAt,
+        sweepConfirmed: sweep.confirmed,
+        confirmationCandle,
+        score: scoreCandidate(distancePct, timeframe.name, insideZone, sweep.confirmed, confirmationCandle)
+      };
+
+      if (!best || candidate.score > best.score || (candidate.score === best.score && candidate.distancePct < best.distancePct)) {
+        best = candidate;
       }
     });
 
@@ -402,17 +321,13 @@ async function scanInstrument(symbol, options = {}) {
 async function scanUniverse(symbols, options = {}) {
   const allMatches = [];
   const batches = [];
-  for (let index = 0; index < symbols.length; index += 5) {
-    batches.push(symbols.slice(index, index + 5));
+  for (let index = 0; index < symbols.length; index += 6) {
+    batches.push(symbols.slice(index, index + 6));
   }
 
   for (const batch of batches) {
-    const batchResults = await Promise.all(
-      batch.map((symbol) => scanInstrument(symbol, options).catch(() => []))
-    );
-    batchResults.forEach((instrumentMatches) => {
-      allMatches.push(...instrumentMatches);
-    });
+    const batchResults = await Promise.all(batch.map((symbol) => scanInstrument(symbol, options).catch(() => [])));
+    batchResults.forEach((instrumentMatches) => allMatches.push(...instrumentMatches));
   }
 
   const grouped = new Map();
@@ -426,12 +341,10 @@ async function scanUniverse(symbols, options = {}) {
     .map((items) => {
       const matchedTimeframes = items.length;
       const symbolScore = Number(items.reduce((sum, item) => sum + item.score, 0).toFixed(2));
-      const divergenceBias = items.find((item) => item.divergence)?.divergence || "none";
       return items.map((item) => ({
         ...item,
         matchedTimeframes,
-        symbolScore,
-        divergenceBias
+        symbolScore
       }));
     })
     .flat()
@@ -445,9 +358,9 @@ async function scanUniverse(symbols, options = {}) {
 
 function getUniverseLabel(universe) {
   return {
-    nifty50: "Nifty 50",
-    fno: "Liquid F&O Stocks",
-    all: "NSE EQ Universe"
+    nifty50: "Nifty 50 Cash Watchlist",
+    fno: "Liquid F&O Long / Short",
+    all: "NSE Cash Universe"
   }[universe] || "Custom";
 }
 
@@ -455,21 +368,32 @@ export default async (request) => {
   try {
     const url = new URL(request.url);
     const universe = url.searchParams.get("universe") || "nifty50";
-    const limit = Math.min(Number(url.searchParams.get("limit") || "80"), 500);
+    const requestedLimit = Math.min(Number(url.searchParams.get("limit") || "80"), 500);
     const proximity = Number(url.searchParams.get("proximity") || "1");
     const impulse = Number(url.searchParams.get("impulse") || "1.5");
     const minTimeframes = Number(url.searchParams.get("minTimeframes") || "1");
 
+    const effectiveLimit = universe === "all" ? Math.min(requestedLimit, 150) : requestedLimit;
+    const stockTimeframes = universe === "all"
+      ? TIMEFRAMES.filter((item) => item.name !== "4H")
+      : TIMEFRAMES;
+    const stockDirections = universe === "fno" ? ["bullish", "bearish"] : ["bullish"];
+
     let stockSymbols;
     if (universe === "all") {
-      stockSymbols = await fetchNseSymbols(limit);
+      stockSymbols = await fetchNseSymbols(effectiveLimit);
     } else if (universe === "fno") {
-      stockSymbols = FNO_STOCKS.slice(0, limit);
+      stockSymbols = FNO_STOCKS.slice(0, effectiveLimit);
     } else {
-      stockSymbols = NIFTY50.slice(0, limit);
+      stockSymbols = NIFTY50.slice(0, effectiveLimit);
     }
 
-    const stocks = await scanUniverse(stockSymbols, { proximity, impulse });
+    const stocks = await scanUniverse(stockSymbols, {
+      proximity,
+      impulse,
+      allowedDirections: stockDirections,
+      timeframes: stockTimeframes
+    });
     const filteredStocks = stocks.filter((row) => row.matchedTimeframes >= minTimeframes);
 
     const indexResults = await Promise.all(
@@ -479,20 +403,20 @@ export default async (request) => {
           tvSymbol: indexInstrument.tvSymbol,
           cashTvSymbol: indexInstrument.cashTvSymbol,
           proximity,
-          impulse
+          impulse,
+          allowedDirections: ["bullish", "bearish"],
+          timeframes: TIMEFRAMES.filter((item) => item.name !== "4H")
         });
-        const sorted = matches.sort((a, b) => b.score - a.score);
-        const best = sorted[0];
-        if (!best) {
-          return null;
-        }
-        return {
-          ...best,
-          sourceSymbol: indexInstrument.sourceSymbol,
-          matchedTimeframes: matches.length
-        };
+        const best = matches.sort((a, b) => b.score - a.score)[0];
+        return best ? { ...best, sourceSymbol: indexInstrument.sourceSymbol, matchedTimeframes: matches.length } : null;
       })
     );
+
+    const note = universe === "all" && requestedLimit > effectiveLimit
+      ? `Live NSE cash scans are capped at ${effectiveLimit} symbols on Netlify for stability.`
+      : universe === "all"
+        ? "NSE cash scan uses Daily and Weekly only for stability."
+        : "Cash universes are long-only. F&O and indices can show both directions.";
 
     const payload = {
       generatedAt: new Date().toISOString(),
@@ -500,9 +424,11 @@ export default async (request) => {
       indices: indexResults.filter(Boolean),
       meta: {
         scannedSymbols: stockSymbols.length,
-        bullishDivergences: filteredStocks.filter((item) => item.divergenceBias === "bullish").length,
+        sweepSignals: filteredStocks.filter((item) => item.sweepConfirmed).length,
+        confirmationSignals: filteredStocks.filter((item) => item.confirmationCandle).length,
         universe,
-        universeLabel: getUniverseLabel(universe)
+        universeLabel: getUniverseLabel(universe),
+        note
       }
     };
 
