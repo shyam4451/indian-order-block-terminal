@@ -1,9 +1,20 @@
 const NSE_EQUITY_CSV_URL = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv";
 
-const TIMEFRAMES = [
-  { name: "4H", interval: "1h", range: "60d", synthetic4h: true },
-  { name: "Daily", interval: "1d", range: "2y" },
-  { name: "Weekly", interval: "1wk", range: "5y" }
+const HTF_TIMEFRAMES = [
+  { name: "Daily", interval: "1d", range: "2y", weight: 1.5 },
+  { name: "Weekly", interval: "1wk", range: "5y", weight: 2.2 }
+];
+
+const LTF_TIMEFRAMES = [
+  { name: "1H", interval: "1h", range: "60d", synthetic4h: false, weight: 1.0 },
+  { name: "4H", interval: "1h", range: "60d", synthetic4h: true, weight: 1.35 }
+];
+
+const MARKET_TAPE_SYMBOLS = [
+  { name: "NIFTY 50", symbol: "^NSEI" },
+  { name: "BANK NIFTY", symbol: "^NSEBANK" },
+  { name: "SENSEX", symbol: "^BSESN" },
+  { name: "INDIA VIX", symbol: "^INDIAVIX" }
 ];
 
 const NIFTY50 = [
@@ -26,10 +37,10 @@ const FNO_STOCKS = [
 ];
 
 const INDEX_INSTRUMENTS = [
-  { name: "NIFTY 50", sourceSymbol: "^NSEI", tvSymbol: "NSE:NIFTY1!", cashTvSymbol: "NSE:NIFTY" },
-  { name: "BANK NIFTY", sourceSymbol: "^NSEBANK", tvSymbol: "NSE:BANKNIFTY1!", cashTvSymbol: "NSE:BANKNIFTY" },
-  { name: "FIN NIFTY", sourceSymbol: "NIFTYFINSRV25_50.NS", tvSymbol: "NSE:FINNIFTY1!", cashTvSymbol: "NSE:NIFTYFINSRV25_50" },
-  { name: "MIDCAP NIFTY", sourceSymbol: "NIFTY_MID_SELECT.NS", tvSymbol: "NSE:MIDCPNIFTY1!", cashTvSymbol: "NSE:NIFTY_MID_SELECT" }
+  { name: "NIFTY 50", sourceSymbol: "^NSEI", tvSymbol: "NSE:NIFTY1!" },
+  { name: "BANK NIFTY", sourceSymbol: "^NSEBANK", tvSymbol: "NSE:BANKNIFTY1!" },
+  { name: "FIN NIFTY", sourceSymbol: "NIFTYFINSRV25_50.NS", tvSymbol: "NSE:FINNIFTY1!" },
+  { name: "MIDCAP NIFTY", sourceSymbol: "NIFTY_MID_SELECT.NS", tvSymbol: "NSE:MIDCPNIFTY1!" }
 ];
 
 function csvToRows(text) {
@@ -53,10 +64,21 @@ async function fetchNseSymbols(limit = 100) {
   }
 
   const rows = csvToRows(await response.text());
-  return rows
+  const symbols = rows
     .filter((row) => row.SERIES === "EQ" && row.SYMBOL)
-    .map((row) => `${row.SYMBOL}.NS`)
-    .slice(0, limit);
+    .map((row) => `${row.SYMBOL}.NS`);
+
+  if (limit >= symbols.length) {
+    return symbols;
+  }
+
+  const sampled = [];
+  const step = symbols.length / limit;
+  for (let index = 0; index < limit; index += 1) {
+    const pickIndex = Math.min(symbols.length - 1, Math.floor(index * step));
+    sampled.push(symbols[pickIndex]);
+  }
+  return [...new Set(sampled)];
 }
 
 async function fetchYahooCandles(symbol, interval, range) {
@@ -175,13 +197,23 @@ function findOrderBlocks(rows, impulseThreshold = 1.5, lookback = 20, searchBack
     if (bullishBreak) {
       const source = [...candidates].reverse().find((item) => item.close < item.open);
       if (source) {
-        zones.push({ direction: "bullish", formedAt: source.datetime, zoneLow: source.low, zoneHigh: source.open });
+        zones.push({
+          direction: "bullish",
+          formedAt: source.datetime,
+          zoneLow: source.low,
+          zoneHigh: source.open
+        });
       }
     }
     if (bearishBreak) {
       const source = [...candidates].reverse().find((item) => item.close > item.open);
       if (source) {
-        zones.push({ direction: "bearish", formedAt: source.datetime, zoneLow: source.open, zoneHigh: source.high });
+        zones.push({
+          direction: "bearish",
+          formedAt: source.datetime,
+          zoneLow: source.open,
+          zoneHigh: source.high
+        });
       }
     }
   }
@@ -196,6 +228,7 @@ function findOrderBlocks(rows, impulseThreshold = 1.5, lookback = 20, searchBack
     seen.add(key);
     unique.push(zone);
   });
+
   return unique.reverse();
 }
 
@@ -209,9 +242,17 @@ function distanceToZone(price, zoneLow, zoneHigh) {
   return { distancePct: ((price - zoneHigh) / price) * 100, insideZone: "no" };
 }
 
-function detectLiquiditySweep(rows, direction, lookback = 12) {
+function nearZoneInteraction(row, zone, direction) {
+  const padding = (zone.zoneHigh - zone.zoneLow) * 0.15;
+  if (direction === "bullish") {
+    return row.low <= zone.zoneHigh + padding && row.low >= zone.zoneLow - (padding * 2);
+  }
+  return row.high >= zone.zoneLow - padding && row.high <= zone.zoneHigh + (padding * 2);
+}
+
+function detectLowerTimeframeSweep(rows, zone, direction, lookback = 18) {
   if (rows.length < lookback + 3) {
-    return { confirmed: false };
+    return { confirmed: false, at: null };
   }
 
   const last = rows[rows.length - 1];
@@ -219,58 +260,156 @@ function detectLiquiditySweep(rows, direction, lookback = 12) {
 
   if (direction === "bullish") {
     const priorSwingLow = Math.min(...recent.map((item) => item.low));
+    const reclaimed = last.low < priorSwingLow && last.close > priorSwingLow;
     return {
-      confirmed: last.low < priorSwingLow && last.close > priorSwingLow
+      confirmed: reclaimed && nearZoneInteraction(last, zone, direction),
+      at: reclaimed ? last.datetime : null
     };
   }
 
   const priorSwingHigh = Math.max(...recent.map((item) => item.high));
+  const reclaimed = last.high > priorSwingHigh && last.close < priorSwingHigh;
   return {
-    confirmed: last.high > priorSwingHigh && last.close < priorSwingHigh
+    confirmed: reclaimed && nearZoneInteraction(last, zone, direction),
+    at: reclaimed ? last.datetime : null
   };
 }
 
-function detectConfirmationCandle(rows, direction) {
+function detectLowerTimeframeConfirmation(rows, direction) {
   if (rows.length < 2) {
     return false;
   }
   const last = rows[rows.length - 1];
   const previous = rows[rows.length - 2];
-
   if (direction === "bullish") {
-    return last.close > last.open && last.close > previous.close;
+    return last.close > last.open && last.close > previous.high;
   }
-  return last.close < last.open && last.close < previous.close;
+  return last.close < last.open && last.close < previous.low;
 }
 
-function scoreCandidate(distancePct, timeframe, insideZone, sweepConfirmed, confirmationCandle) {
-  const timeframeWeight = { "4H": 1.0, Daily: 1.5, Weekly: 2.0 }[timeframe] || 1.0;
+function deriveSetupState({ insideZone, sweepConfirmed, confirmationCandle, invalidated }) {
+  if (invalidated) return "Invalidated";
+  if (sweepConfirmed && confirmationCandle) return "LTF Confirmed";
+  if (sweepConfirmed) return "LTF Sweep Seen";
+  if (insideZone === "yes") return "At HTF Zone";
+  return "Near HTF Zone";
+}
+
+function scoreCandidate(match) {
+  const htfWeight = { Daily: 1.5, Weekly: 2.2 }[match.zoneTimeframe] || 1;
+  const triggerWeight = { "1H": 1.0, "4H": 1.3, none: 0 }[match.triggerTimeframe || "none"] || 0;
   return Number((
-    Math.max(0, 5 - distancePct) * timeframeWeight +
-    (insideZone === "yes" ? 1.25 : 0) +
-    (sweepConfirmed ? 2 : 0) +
-    (confirmationCandle ? 1.25 : 0)
+    Math.max(0, 5 - match.distancePct) * htfWeight +
+    (match.insideZone === "yes" ? 1.5 : 0.5) +
+    (match.sweepConfirmed ? 2.5 : 0) +
+    (match.confirmationCandle ? 1.75 : 0) +
+    triggerWeight
   ).toFixed(2));
+}
+
+function invalidationHit(price, zone, direction) {
+  const buffer = Math.max((zone.zoneHigh - zone.zoneLow) * 0.12, price * 0.002);
+  if (direction === "bullish") {
+    return price < zone.zoneLow - buffer;
+  }
+  return price > zone.zoneHigh + buffer;
+}
+
+async function fetchYahooQuote(symbol) {
+  const rows = await fetchYahooCandles(symbol, "1d", "5d");
+  if (rows.length < 2) {
+    return null;
+  }
+  const last = rows[rows.length - 1];
+  const previous = rows[rows.length - 2];
+  const change = last.close - previous.close;
+  const changePct = previous.close ? (change / previous.close) * 100 : 0;
+  return {
+    symbol,
+    price: Number(last.close.toFixed(2)),
+    change: Number(change.toFixed(2)),
+    changePct: Number(changePct.toFixed(2))
+  };
+}
+
+async function fetchMarketTape() {
+  const settled = await Promise.allSettled(
+    MARKET_TAPE_SYMBOLS.map(async (item) => {
+      const quote = await fetchYahooQuote(item.symbol);
+      return quote ? { name: item.name, ...quote } : null;
+    })
+  );
+
+  return settled
+    .filter((item) => item.status === "fulfilled" && item.value)
+    .map((item) => item.value);
+}
+
+function stripHtml(text) {
+  return text
+    .replace(/<!\[CDATA\[|\]\]>/g, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseRssItems(xml, limit = 6) {
+  const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)];
+  return items.slice(0, limit).map((item) => {
+    const block = item[1];
+    const title = stripHtml((block.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || "");
+    const link = stripHtml((block.match(/<link>([\s\S]*?)<\/link>/) || [])[1] || "");
+    const pubDate = stripHtml((block.match(/<pubDate>([\s\S]*?)<\/pubDate>/) || [])[1] || "");
+    return { title, link, pubDate };
+  }).filter((item) => item.title && item.link);
+}
+
+async function fetchNewsItems(symbols) {
+  const queries = ["Nifty 50 Indian stock market", ...symbols.slice(0, 4).map((symbol) => symbol.replace(".NS", ""))];
+  const settled = await Promise.allSettled(
+    queries.map(async (query) => {
+      const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query + " NSE OR India stocks")}&hl=en-IN&gl=IN&ceid=IN:en`;
+      const response = await fetch(url, {
+        headers: { "user-agent": "Mozilla/5.0" }
+      });
+      if (!response.ok) {
+        return [];
+      }
+      const xml = await response.text();
+      return parseRssItems(xml, 2).map((item) => ({ ...item, sourceQuery: query }));
+    })
+  );
+
+  return settled
+    .filter((item) => item.status === "fulfilled")
+    .flatMap((item) => item.value)
+    .slice(0, 8);
 }
 
 async function scanInstrument(symbol, options = {}) {
   const {
     displayName = symbol,
     tvSymbol = `NSE:${symbol.replace(".NS", "")}`,
-    cashTvSymbol = tvSymbol,
     proximity = 1,
     impulse = 1.5,
-    allowedDirections = ["bullish", "bearish"],
-    timeframes = TIMEFRAMES
+    allowedDirections = ["bullish", "bearish"]
   } = options;
+
+  const ltfRowsByName = {};
+  await Promise.all(
+    LTF_TIMEFRAMES.map(async (timeframe) => {
+      let rows = await fetchYahooCandles(symbol, timeframe.interval, timeframe.range);
+      if (timeframe.synthetic4h) {
+        rows = buildSynthetic4H(rows);
+      }
+      ltfRowsByName[timeframe.name] = rows;
+    })
+  );
 
   const matches = [];
 
-  for (const timeframe of timeframes) {
-    let rows = await fetchYahooCandles(symbol, timeframe.interval, timeframe.range);
-    if (timeframe.synthetic4h) {
-      rows = buildSynthetic4H(rows);
-    }
+  for (const timeframe of HTF_TIMEFRAMES) {
+    const rows = await fetchYahooCandles(symbol, timeframe.interval, timeframe.range);
     if (!rows.length) {
       continue;
     }
@@ -285,14 +424,34 @@ async function scanInstrument(symbol, options = {}) {
         return;
       }
 
-      const sweep = detectLiquiditySweep(rows, zone.direction);
-      const confirmationCandle = detectConfirmationCandle(rows, zone.direction);
+      let triggerTimeframe = null;
+      let sweepConfirmed = false;
+      let confirmationCandle = false;
+
+      LTF_TIMEFRAMES.forEach((ltf) => {
+        const triggerRows = ltfRowsByName[ltf.name] || [];
+        if (!triggerRows.length) {
+          return;
+        }
+        const sweep = detectLowerTimeframeSweep(triggerRows, zone, zone.direction);
+        const confirmation = detectLowerTimeframeConfirmation(triggerRows, zone.direction);
+        if (sweep.confirmed && (!triggerTimeframe || ltf.weight > ({ "1H": 1.0, "4H": 1.3 }[triggerTimeframe] || 0))) {
+          triggerTimeframe = ltf.name;
+          sweepConfirmed = true;
+          confirmationCandle = confirmation;
+        } else if (!triggerTimeframe && confirmation) {
+          confirmationCandle = true;
+        }
+      });
+
+      const invalidated = invalidationHit(currentPrice, zone, zone.direction);
       const candidate = {
         symbol,
         name: displayName,
         tvSymbol,
-        cashTvSymbol,
         timeframe: timeframe.name,
+        zoneTimeframe: timeframe.name,
+        triggerTimeframe: triggerTimeframe || "none",
         direction: zone.direction,
         currentPrice: Number(currentPrice.toFixed(2)),
         zoneLow: Number(zone.zoneLow.toFixed(2)),
@@ -300,10 +459,13 @@ async function scanInstrument(symbol, options = {}) {
         distancePct: Number(distancePct.toFixed(2)),
         insideZone,
         formedAt: zone.formedAt,
-        sweepConfirmed: sweep.confirmed,
+        sweepConfirmed,
         confirmationCandle,
-        score: scoreCandidate(distancePct, timeframe.name, insideZone, sweep.confirmed, confirmationCandle)
+        invalidated
       };
+
+      candidate.setupState = deriveSetupState(candidate);
+      candidate.score = scoreCandidate(candidate);
 
       if (!best || candidate.score > best.score || (candidate.score === best.score && candidate.distancePct < best.distancePct)) {
         best = candidate;
@@ -349,8 +511,14 @@ async function scanUniverse(symbols, options = {}) {
     })
     .flat()
     .sort((a, b) => {
-      if (b.matchedTimeframes !== a.matchedTimeframes) return b.matchedTimeframes - a.matchedTimeframes;
-      if (a.insideZone !== b.insideZone) return a.insideZone === "yes" ? -1 : 1;
+      const rank = {
+        "LTF Confirmed": 5,
+        "LTF Sweep Seen": 4,
+        "At HTF Zone": 3,
+        "Near HTF Zone": 2,
+        Invalidated: 1
+      };
+      if ((rank[b.setupState] || 0) !== (rank[a.setupState] || 0)) return (rank[b.setupState] || 0) - (rank[a.setupState] || 0);
       if (b.symbolScore !== a.symbolScore) return b.symbolScore - a.symbolScore;
       return a.distancePct - b.distancePct;
     });
@@ -374,9 +542,6 @@ export default async (request) => {
     const minTimeframes = Number(url.searchParams.get("minTimeframes") || "1");
 
     const effectiveLimit = universe === "all" ? Math.min(requestedLimit, 150) : requestedLimit;
-    const stockTimeframes = universe === "all"
-      ? TIMEFRAMES.filter((item) => item.name !== "4H")
-      : TIMEFRAMES;
     const stockDirections = universe === "fno" ? ["bullish", "bearish"] : ["bullish"];
 
     let stockSymbols;
@@ -391,8 +556,7 @@ export default async (request) => {
     const stocks = await scanUniverse(stockSymbols, {
       proximity,
       impulse,
-      allowedDirections: stockDirections,
-      timeframes: stockTimeframes
+      allowedDirections: stockDirections
     });
     const filteredStocks = stocks.filter((row) => row.matchedTimeframes >= minTimeframes);
 
@@ -401,27 +565,28 @@ export default async (request) => {
         const matches = await scanInstrument(indexInstrument.sourceSymbol, {
           displayName: indexInstrument.name,
           tvSymbol: indexInstrument.tvSymbol,
-          cashTvSymbol: indexInstrument.cashTvSymbol,
           proximity,
           impulse,
-          allowedDirections: ["bullish", "bearish"],
-          timeframes: TIMEFRAMES.filter((item) => item.name !== "4H")
+          allowedDirections: ["bullish", "bearish"]
         });
         const best = matches.sort((a, b) => b.score - a.score)[0];
-        return best ? { ...best, sourceSymbol: indexInstrument.sourceSymbol, matchedTimeframes: matches.length } : null;
+        return best ? { ...best, sourceSymbol: indexInstrument.sourceSymbol } : null;
       })
     );
 
+    const marketTape = await fetchMarketTape();
+    const news = await fetchNewsItems(filteredStocks.map((item) => item.symbol));
+
     const note = universe === "all" && requestedLimit > effectiveLimit
       ? `Live NSE cash scans are capped at ${effectiveLimit} symbols on Netlify for stability.`
-      : universe === "all"
-        ? "NSE cash scan uses Daily and Weekly only for stability."
-        : "Cash universes are long-only. F&O and indices can show both directions.";
+      : "HTF zones are defined on Daily/Weekly. Sweeps and confirms are searched on 1H/4H.";
 
     const payload = {
       generatedAt: new Date().toISOString(),
       stocks: filteredStocks,
       indices: indexResults.filter(Boolean),
+      marketTape,
+      news,
       meta: {
         scannedSymbols: stockSymbols.length,
         sweepSignals: filteredStocks.filter((item) => item.sweepConfirmed).length,

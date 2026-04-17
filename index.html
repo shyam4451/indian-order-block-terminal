@@ -77,6 +77,13 @@
         <p id="scanMeta" class="meta-text">No scan yet.</p>
       </section>
 
+      <section class="tape-row" id="marketTape">
+        <article class="metric card">
+          <span>Market Tape</span>
+          <strong>Loading...</strong>
+        </article>
+      </section>
+
       <section class="metrics">
         <article class="metric card">
           <span>Scanned</span>
@@ -115,8 +122,10 @@
               <thead>
                 <tr>
                   <th>Symbol</th>
-                  <th>TF</th>
+                  <th>HTF Zone</th>
+                  <th>LTF Trigger</th>
                   <th>Setup</th>
+                  <th>State</th>
                   <th>Price</th>
                   <th>Zone</th>
                   <th>Distance</th>
@@ -128,7 +137,7 @@
               </thead>
               <tbody id="stocksBody">
                 <tr>
-                  <td colspan="10" class="empty-state">Run a scan to load setups.</td>
+                  <td colspan="12" class="empty-state">Run a scan to load setups.</td>
                 </tr>
               </tbody>
             </table>
@@ -136,6 +145,18 @@
         </section>
 
         <aside class="sidebar">
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <p class="section-label">News Flow</p>
+                <h2>Market and board news</h2>
+              </div>
+            </div>
+            <div id="newsFeed" class="news-list">
+              <div class="empty-state">News will appear after the scan.</div>
+            </div>
+          </section>
+
           <section class="card">
             <div class="section-head">
               <div>
@@ -154,9 +175,21 @@
             <ul class="hero-list">
               <li>Cash stocks are scanned only for bullish demand opportunities.</li>
               <li>Short setups are limited to F&amp;O stocks and indices.</li>
-              <li>The full NSE cash universe is heavier, so it may be slower than Nifty 50 or F&amp;O.</li>
-              <li>Use the chart link to verify the zone and sweep before taking any trade.</li>
+              <li>Daily and Weekly define the zone. `1H / 4H` decide whether the trigger has actually shown up.</li>
+              <li>Use the chart link to verify the HTF zone and the LTF sweep before taking any trade.</li>
             </ul>
+          </section>
+
+          <section class="card note-card">
+            <div class="section-head">
+              <div>
+                <p class="section-label">Journal</p>
+                <h2>Taken setups</h2>
+              </div>
+            </div>
+            <div id="journalList" class="journal-list">
+              <div class="empty-state">Saved trades will appear here.</div>
+            </div>
           </section>
         </aside>
       </main>
