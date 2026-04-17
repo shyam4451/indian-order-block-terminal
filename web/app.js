@@ -46,17 +46,6 @@ function formatNumber(value, digits = 2) {
   });
 }
 
-function formatDate(value) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric"
-  });
-}
-
 function chartUrl(symbol) {
   return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`;
 }
@@ -102,7 +91,7 @@ function stockRowMarkup(row) {
       <td>
         <div class="row-symbol">
           <strong>${row.symbol}</strong>
-          <small>${formatDate(row.formedAt)}</small>
+          <small>${row.setupState}</small>
         </div>
       </td>
       <td>${row.zoneTimeframe}</td>
@@ -154,16 +143,30 @@ function indexCardMarkup(item) {
 }
 
 function newsCardMarkup(item) {
+  const date = item.pubDate
+    ? new Date(item.pubDate).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric"
+    })
+    : "-";
   return `
     <a class="news-card" href="${item.link}" target="_blank" rel="noreferrer">
       <span class="section-label">${item.sourceQuery}</span>
       <strong>${item.title}</strong>
-      <small>${formatDate(item.pubDate)}</small>
+      <small>${date}</small>
     </a>
   `;
 }
 
 function journalItemMarkup(item, index) {
+  const date = item.createdAt
+    ? new Date(item.createdAt).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric"
+    })
+    : "-";
   return `
     <article class="journal-card">
       <div class="index-head">
@@ -173,7 +176,7 @@ function journalItemMarkup(item, index) {
       <p>${item.setup}</p>
       <p>Zone TF: ${item.zoneTimeframe} | Trigger TF: ${item.triggerTimeframe}</p>
       <p>Saved state: ${item.state}</p>
-      <small>${formatDate(item.createdAt)}</small>
+      <small>${date}</small>
     </article>
   `;
 }

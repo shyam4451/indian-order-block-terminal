@@ -250,41 +250,103 @@ function nearZoneInteraction(row, zone, direction) {
   return row.high >= zone.zoneLow - padding && row.high <= zone.zoneHigh + (padding * 2);
 }
 
-function detectLowerTimeframeSweep(rows, zone, direction, lookback = 18) {
+function zoneWidthPct(zone, referencePrice) {
+  if (!referencePrice) {
+    return 0;
+  }
+  return ((zone.zoneHigh - zone.zoneLow) / referencePrice) * 100;
+}
+
+function findNearestOpposingZone(zones, currentPrice, direction) {
+  if (direction === "bullish") {
+    return zones
+      .filter((zone) => zone.direction === "bearish" && zone.zoneLow > currentPrice)
+      .sort((a, b) => a.zoneLow - b.zoneLow)[0] || null;
+  }
+
+  return zones
+    .filter((zone) => zone.direction === "bullish" && zone.zoneHigh < currentPrice)
+    .sort((a, b) => b.zoneHigh - a.zoneHigh)[0] || null;
+}
+
+function hasAdequateRoom(zone, opposingZone, currentPrice) {
+  if (!opposingZone || !currentPrice) {
+    return true;
+  }
+
+  const roomPct = zone.direction === "bullish"
+    ? ((opposingZone.zoneLow - currentPrice) / currentPrice) * 100
+    : ((currentPrice - opposingZone.zoneHigh) / currentPrice) * 100;
+
+  const minimumRoomPct = Math.max(zoneWidthPct(zone, currentPrice) * 1.25, 1.1);
+  return roomPct >= minimumRoomPct;
+}
+
+function zoneFreshnessBoost(formedAt, timeframeName) {
+  const formedTs = Date.parse(formedAt || "");
+  if (Number.isNaN(formedTs)) {
+    return 0;
+  }
+
+  const ageDays = Math.max(0, (Date.now() - formedTs) / (1000 * 60 * 60 * 24));
+  const horizon = timeframeName === "Weekly" ? 420 : 180;
+  return Math.max(0, 1.6 - (ageDays / horizon) * 1.6);
+}
+
+function detectLowerTimeframeSweep(rows, zone, direction, lookback = 18, evaluationWindow = 8) {
   if (rows.length < lookback + 3) {
     return { confirmed: false, at: null };
   }
 
-  const last = rows[rows.length - 1];
-  const recent = rows.slice(rows.length - lookback - 1, rows.length - 1);
+  const start = Math.max(lookback + 1, rows.length - evaluationWindow);
+  for (let idx = rows.length - 1; idx >= start; idx -= 1) {
+    const candle = rows[idx];
+    const recent = rows.slice(idx - lookback, idx);
+    if (!recent.length || !nearZoneInteraction(candle, zone, direction)) {
+      continue;
+    }
 
-  if (direction === "bullish") {
-    const priorSwingLow = Math.min(...recent.map((item) => item.low));
-    const reclaimed = last.low < priorSwingLow && last.close > priorSwingLow;
-    return {
-      confirmed: reclaimed && nearZoneInteraction(last, zone, direction),
-      at: reclaimed ? last.datetime : null
-    };
+    if (direction === "bullish") {
+      const priorSwingLow = Math.min(...recent.map((item) => item.low));
+      const reclaimed = candle.low < priorSwingLow && candle.close > priorSwingLow;
+      if (reclaimed) {
+        return { confirmed: true, at: candle.datetime };
+      }
+      continue;
+    }
+
+    const priorSwingHigh = Math.max(...recent.map((item) => item.high));
+    const reclaimed = candle.high > priorSwingHigh && candle.close < priorSwingHigh;
+    if (reclaimed) {
+      return { confirmed: true, at: candle.datetime };
+    }
   }
 
-  const priorSwingHigh = Math.max(...recent.map((item) => item.high));
-  const reclaimed = last.high > priorSwingHigh && last.close < priorSwingHigh;
-  return {
-    confirmed: reclaimed && nearZoneInteraction(last, zone, direction),
-    at: reclaimed ? last.datetime : null
-  };
+  return { confirmed: false, at: null };
 }
 
-function detectLowerTimeframeConfirmation(rows, direction) {
-  if (rows.length < 2) {
+function detectLowerTimeframeConfirmation(rows, direction, sweepAt = null) {
+  const filtered = sweepAt
+    ? rows.filter((row) => row.datetime >= sweepAt)
+    : rows;
+  const sample = filtered.length >= 4 ? filtered.slice(-4) : filtered;
+
+  if (sample.length < 2) {
     return false;
   }
-  const last = rows[rows.length - 1];
-  const previous = rows[rows.length - 2];
-  if (direction === "bullish") {
-    return last.close > last.open && last.close > previous.high;
+
+  for (let index = 1; index < sample.length; index += 1) {
+    const current = sample[index];
+    const previous = sample[index - 1];
+    if (direction === "bullish" && current.close > current.open && current.close > previous.high) {
+      return true;
+    }
+    if (direction === "bearish" && current.close < current.open && current.close < previous.low) {
+      return true;
+    }
   }
-  return last.close < last.open && last.close < previous.low;
+
+  return false;
 }
 
 function deriveSetupState({ insideZone, sweepConfirmed, confirmationCandle, invalidated }) {
@@ -303,6 +365,9 @@ function scoreCandidate(match) {
     (match.insideZone === "yes" ? 1.5 : 0.5) +
     (match.sweepConfirmed ? 2.5 : 0) +
     (match.confirmationCandle ? 1.75 : 0) +
+    (match.hasOpposingRoom ? 1.2 : -2.5) +
+    (match.roomPct !== null ? Math.min(match.roomPct, 4) * 0.35 : 0) +
+    zoneFreshnessBoost(match.formedAt, match.zoneTimeframe) +
     triggerWeight
   ).toFixed(2));
 }
@@ -415,18 +480,33 @@ async function scanInstrument(symbol, options = {}) {
     }
 
     const currentPrice = rows[rows.length - 1].close;
-    const zones = findOrderBlocks(rows, impulse).filter((zone) => allowedDirections.includes(zone.direction));
+    const zones = findOrderBlocks(rows, impulse);
+    const directionalZones = zones.filter((zone) => allowedDirections.includes(zone.direction));
     let best = null;
 
-    zones.forEach((zone) => {
+    directionalZones.forEach((zone) => {
       const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
       if (!(insideZone === "yes" || distancePct <= proximity)) {
+        return;
+      }
+
+      const opposingZone = findNearestOpposingZone(zones, currentPrice, zone.direction);
+      const roomPct = opposingZone
+        ? Number((
+          zone.direction === "bullish"
+            ? ((opposingZone.zoneLow - currentPrice) / currentPrice) * 100
+            : ((currentPrice - opposingZone.zoneHigh) / currentPrice) * 100
+        ).toFixed(2))
+        : null;
+      const hasOpposingRoom = hasAdequateRoom(zone, opposingZone, currentPrice);
+      if (!hasOpposingRoom) {
         return;
       }
 
       let triggerTimeframe = null;
       let sweepConfirmed = false;
       let confirmationCandle = false;
+      let sweepAt = null;
 
       LTF_TIMEFRAMES.forEach((ltf) => {
         const triggerRows = ltfRowsByName[ltf.name] || [];
@@ -434,11 +514,12 @@ async function scanInstrument(symbol, options = {}) {
           return;
         }
         const sweep = detectLowerTimeframeSweep(triggerRows, zone, zone.direction);
-        const confirmation = detectLowerTimeframeConfirmation(triggerRows, zone.direction);
+        const confirmation = detectLowerTimeframeConfirmation(triggerRows, zone.direction, sweep.at);
         if (sweep.confirmed && (!triggerTimeframe || ltf.weight > ({ "1H": 1.0, "4H": 1.3 }[triggerTimeframe] || 0))) {
           triggerTimeframe = ltf.name;
           sweepConfirmed = true;
           confirmationCandle = confirmation;
+          sweepAt = sweep.at;
         } else if (!triggerTimeframe && confirmation) {
           confirmationCandle = true;
         }
@@ -459,7 +540,10 @@ async function scanInstrument(symbol, options = {}) {
         distancePct: Number(distancePct.toFixed(2)),
         insideZone,
         formedAt: zone.formedAt,
+        roomPct,
+        hasOpposingRoom,
         sweepConfirmed,
+        sweepAt,
         confirmationCandle,
         invalidated
       };
