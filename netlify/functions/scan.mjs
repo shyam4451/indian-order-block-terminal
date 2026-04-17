@@ -55,6 +55,34 @@ function csvToRows(text) {
   });
 }
 
+function buildStableUniverseOrder(symbols) {
+  const buckets = new Map();
+  symbols.forEach((symbol) => {
+    const bucketKey = symbol[0]?.toUpperCase() || "#";
+    if (!buckets.has(bucketKey)) {
+      buckets.set(bucketKey, []);
+    }
+    buckets.get(bucketKey).push(symbol);
+  });
+
+  const orderedKeys = [...buckets.keys()].sort();
+  const stable = [];
+  let added = true;
+
+  while (added) {
+    added = false;
+    orderedKeys.forEach((key) => {
+      const bucket = buckets.get(key);
+      if (bucket?.length) {
+        stable.push(bucket.shift());
+        added = true;
+      }
+    });
+  }
+
+  return stable;
+}
+
 async function fetchNseSymbols(limit = 100) {
   const response = await fetch(NSE_EQUITY_CSV_URL, {
     headers: { "user-agent": "Mozilla/5.0" }
@@ -67,18 +95,13 @@ async function fetchNseSymbols(limit = 100) {
   const symbols = rows
     .filter((row) => row.SERIES === "EQ" && row.SYMBOL)
     .map((row) => `${row.SYMBOL}.NS`);
+  const stableOrder = buildStableUniverseOrder(symbols);
 
-  if (limit >= symbols.length) {
-    return symbols;
+  if (limit >= stableOrder.length) {
+    return stableOrder;
   }
 
-  const sampled = [];
-  const step = symbols.length / limit;
-  for (let index = 0; index < limit; index += 1) {
-    const pickIndex = Math.min(symbols.length - 1, Math.floor(index * step));
-    sampled.push(symbols[pickIndex]);
-  }
-  return [...new Set(sampled)];
+  return stableOrder.slice(0, limit);
 }
 
 async function fetchYahooCandles(symbol, interval, range) {
@@ -201,6 +224,38 @@ function currentRangePositionRatio(rows, price, window = 40) {
   return (price - rangeLow) / range;
 }
 
+function countZoneRetests(rows, zone, formedIndex, direction) {
+  let touches = 0;
+  for (let index = formedIndex + 2; index < rows.length; index += 1) {
+    const row = rows[index];
+    const touched = row.low <= zone.zoneHigh && row.high >= zone.zoneLow;
+    if (!touched) {
+      continue;
+    }
+
+    if (direction === "bullish" && row.close < zone.zoneLow) {
+      return Number.POSITIVE_INFINITY;
+    }
+    if (direction === "bearish" && row.close > zone.zoneHigh) {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    touches += 1;
+  }
+  return touches;
+}
+
+function barsSinceLastZoneTouch(rows, zone) {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
+    const touched = row.low <= zone.zoneHigh && row.high >= zone.zoneLow;
+    if (touched) {
+      return rows.length - 1 - index;
+    }
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
 function favorableZonePosition(price, zone, direction) {
   if (price < zone.zoneLow || price > zone.zoneHigh) {
     return true;
@@ -218,60 +273,83 @@ function favorableZonePosition(price, zone, direction) {
   return pricePosition >= 0.4;
 }
 
-function findOrderBlocks(rows, impulseThreshold = 1.5, lookback = 20, searchBack = 6) {
-  if (rows.length < lookback + 10) {
+function findDemandSupplyZones(rows, timeframeName, impulseThreshold = 1.5) {
+  const swingWindow = timeframeName === "Weekly" ? 2 : 3;
+  const departureWindow = timeframeName === "Weekly" ? 4 : 6;
+  const ageLimit = timeframeName === "Weekly" ? 80 : 60;
+  if (rows.length < swingWindow * 2 + departureWindow + 10) {
     return [];
   }
 
   const ranges = rows.map((row) => Math.max(0, row.high - row.low));
-  const bodies = rows.map((row) => Math.abs(row.close - row.open));
   const avgRanges = rollingAverage(ranges, 10);
   const zones = [];
 
-  for (let idx = lookback; idx < rows.length; idx += 1) {
+  for (let idx = swingWindow; idx < rows.length - departureWindow; idx += 1) {
     const row = rows[idx];
     const avgRange = avgRanges[idx];
     if (!avgRange) {
       continue;
     }
 
-    const priorHigh = Math.max(...rows.slice(idx - lookback, idx).map((item) => item.high));
-    const priorLow = Math.min(...rows.slice(idx - lookback, idx).map((item) => item.low));
-    const bullishBreak = row.close > priorHigh && bodies[idx] >= avgRange * impulseThreshold;
-    const bearishBreak = row.close < priorLow && bodies[idx] >= avgRange * impulseThreshold;
-    if (!bullishBreak && !bearishBreak) {
+    const left = rows.slice(idx - swingWindow, idx);
+    const right = rows.slice(idx + 1, idx + 1 + swingWindow);
+    if (left.length < swingWindow || right.length < swingWindow) {
       continue;
     }
 
-    const candidates = rows.slice(Math.max(0, idx - searchBack), idx);
-    if (bullishBreak) {
-      const source = [...candidates].reverse().find((item) => item.close < item.open);
-      if (source) {
-        const zone = {
-          direction: "bullish",
-          formedAt: source.datetime,
-          zoneLow: source.low,
-          zoneHigh: source.open
-        };
-        const positionRatio = structurePositionRatio(rows, zone, idx);
-        if (positionRatio <= 0.48) {
-          zones.push(zone);
-        }
+    const future = rows.slice(idx + 1, idx + 1 + departureWindow);
+    const maxFutureHigh = Math.max(...future.map((item) => item.high));
+    const minFutureLow = Math.min(...future.map((item) => item.low));
+
+    const isPivotLow = row.low <= Math.min(...left.map((item) => item.low)) && row.low <= Math.min(...right.map((item) => item.low));
+    const isPivotHigh = row.high >= Math.max(...left.map((item) => item.high)) && row.high >= Math.max(...right.map((item) => item.high));
+
+    if (isPivotLow) {
+      const zone = {
+        direction: "bullish",
+        formedAt: row.datetime,
+        zoneLow: row.low,
+        zoneHigh: Math.max(row.open, row.close)
+      };
+      const departureStrength = (maxFutureHigh - zone.zoneHigh) / Math.max(avgRange, 0.01);
+      const positionRatio = structurePositionRatio(rows, zone, idx);
+      const retests = countZoneRetests(rows, zone, idx, "bullish");
+      const ageBars = rows.length - idx - 1;
+      const widthPct = zoneWidthPct(zone, row.close);
+
+      if (
+        departureStrength >= impulseThreshold &&
+        positionRatio <= 0.45 &&
+        retests <= 2 &&
+        ageBars <= ageLimit &&
+        widthPct <= 12
+      ) {
+        zones.push({ ...zone, retests, ageBars });
       }
     }
-    if (bearishBreak) {
-      const source = [...candidates].reverse().find((item) => item.close > item.open);
-      if (source) {
-        const zone = {
-          direction: "bearish",
-          formedAt: source.datetime,
-          zoneLow: source.open,
-          zoneHigh: source.high
-        };
-        const positionRatio = structurePositionRatio(rows, zone, idx);
-        if (positionRatio >= 0.52) {
-          zones.push(zone);
-        }
+
+    if (isPivotHigh) {
+      const zone = {
+        direction: "bearish",
+        formedAt: row.datetime,
+        zoneLow: Math.min(row.open, row.close),
+        zoneHigh: row.high
+      };
+      const departureStrength = (zone.zoneLow - minFutureLow) / Math.max(avgRange, 0.01);
+      const positionRatio = structurePositionRatio(rows, zone, idx);
+      const retests = countZoneRetests(rows, zone, idx, "bearish");
+      const ageBars = rows.length - idx - 1;
+      const widthPct = zoneWidthPct(zone, row.close);
+
+      if (
+        departureStrength >= impulseThreshold &&
+        positionRatio >= 0.55 &&
+        retests <= 2 &&
+        ageBars <= ageLimit &&
+        widthPct <= 12
+      ) {
+        zones.push({ ...zone, retests, ageBars });
       }
     }
   }
@@ -280,7 +358,7 @@ function findOrderBlocks(rows, impulseThreshold = 1.5, lookback = 20, searchBack
   const seen = new Set();
   [...zones].reverse().forEach((zone) => {
     const key = `${zone.direction}:${zone.zoneLow.toFixed(2)}:${zone.zoneHigh.toFixed(2)}`;
-    if (seen.has(key) || unique.length >= 5) {
+    if (seen.has(key) || unique.length >= 6) {
       return;
     }
     seen.add(key);
@@ -425,6 +503,7 @@ function scoreCandidate(match) {
     (match.confirmationCandle ? 1.75 : 0) +
     (match.hasOpposingRoom ? 1.2 : -2.5) +
     (match.roomPct !== null ? Math.min(match.roomPct, 4) * 0.35 : 0) +
+    Math.max(0, 1.4 - (match.retests || 0) * 0.55) +
     zoneFreshnessBoost(match.formedAt, match.zoneTimeframe) +
     triggerWeight
   ).toFixed(2));
@@ -539,13 +618,18 @@ async function scanInstrument(symbol, options = {}) {
 
     const currentPrice = rows[rows.length - 1].close;
     const currentRangeRatio = currentRangePositionRatio(rows, currentPrice);
-    const zones = findOrderBlocks(rows, impulse);
+    const zones = findDemandSupplyZones(rows, timeframe.name, impulse);
     const directionalZones = zones.filter((zone) => allowedDirections.includes(zone.direction));
     let best = null;
 
     directionalZones.forEach((zone) => {
       const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
+      const touchAge = barsSinceLastZoneTouch(rows, zone);
+      const maxTouchAge = timeframe.name === "Weekly" ? 4 : 5;
       if (!(insideZone === "yes" || distancePct <= proximity)) {
+        return;
+      }
+      if (insideZone !== "yes" && touchAge > maxTouchAge) {
         return;
       }
       if (!favorableZonePosition(currentPrice, zone, zone.direction)) {
@@ -609,6 +693,8 @@ async function scanInstrument(symbol, options = {}) {
         insideZone,
         formedAt: zone.formedAt,
         currentRangeRatio: Number(currentRangeRatio.toFixed(2)),
+        retests: zone.retests || 0,
+        touchAge,
         roomPct,
         hasOpposingRoom,
         sweepConfirmed,
@@ -732,7 +818,7 @@ export default async (request) => {
 
     const note = universe === "all" && requestedLimit > effectiveLimit
       ? `Live NSE cash scans are capped at ${effectiveLimit} symbols on Netlify for stability.`
-      : "HTF zones are defined on Daily/Weekly. Sweeps and confirms are searched on 1H/4H.";
+      : "HTF demand and supply zones are defined on Daily/Weekly. Sweeps and confirms are searched on 1H/4H.";
 
     const payload = {
       generatedAt: new Date().toISOString(),
