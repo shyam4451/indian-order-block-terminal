@@ -268,15 +268,15 @@ function favorableZonePosition(price, zone, direction) {
 
   const pricePosition = (price - zone.zoneLow) / width;
   if (direction === "bullish") {
-    return pricePosition <= 0.6;
+    return pricePosition <= 0.78;
   }
-  return pricePosition >= 0.4;
+  return pricePosition >= 0.22;
 }
 
 function findDemandSupplyZones(rows, timeframeName, impulseThreshold = 1.5) {
   const swingWindow = timeframeName === "Weekly" ? 2 : 3;
   const departureWindow = timeframeName === "Weekly" ? 4 : 6;
-  const ageLimit = timeframeName === "Weekly" ? 80 : 60;
+  const ageLimit = timeframeName === "Weekly" ? 110 : 90;
   if (rows.length < swingWindow * 2 + departureWindow + 10) {
     return [];
   }
@@ -320,10 +320,10 @@ function findDemandSupplyZones(rows, timeframeName, impulseThreshold = 1.5) {
 
       if (
         departureStrength >= impulseThreshold &&
-        positionRatio <= 0.45 &&
-        retests <= 2 &&
+        positionRatio <= 0.5 &&
+        retests <= 3 &&
         ageBars <= ageLimit &&
-        widthPct <= 12
+        widthPct <= 15
       ) {
         zones.push({ ...zone, retests, ageBars });
       }
@@ -344,10 +344,10 @@ function findDemandSupplyZones(rows, timeframeName, impulseThreshold = 1.5) {
 
       if (
         departureStrength >= impulseThreshold &&
-        positionRatio >= 0.55 &&
-        retests <= 2 &&
+        positionRatio >= 0.5 &&
+        retests <= 3 &&
         ageBars <= ageLimit &&
-        widthPct <= 12
+        widthPct <= 15
       ) {
         zones.push({ ...zone, retests, ageBars });
       }
@@ -625,7 +625,7 @@ async function scanInstrument(symbol, options = {}) {
     directionalZones.forEach((zone) => {
       const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
       const touchAge = barsSinceLastZoneTouch(rows, zone);
-      const maxTouchAge = timeframe.name === "Weekly" ? 4 : 5;
+      const maxTouchAge = timeframe.name === "Weekly" ? 8 : 10;
       if (!(insideZone === "yes" || distancePct <= proximity)) {
         return;
       }
@@ -635,10 +635,10 @@ async function scanInstrument(symbol, options = {}) {
       if (!favorableZonePosition(currentPrice, zone, zone.direction)) {
         return;
       }
-      if (zone.direction === "bullish" && currentRangeRatio > 0.62) {
+      if (zone.direction === "bullish" && currentRangeRatio > 0.74) {
         return;
       }
-      if (zone.direction === "bearish" && currentRangeRatio < 0.38) {
+      if (zone.direction === "bearish" && currentRangeRatio < 0.26) {
         return;
       }
 
