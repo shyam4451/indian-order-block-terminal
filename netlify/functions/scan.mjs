@@ -168,6 +168,23 @@ function rollingAverage(values, window) {
   });
 }
 
+function structurePositionRatio(rows, zone, index, window = 40) {
+  const slice = rows.slice(Math.max(0, index - window), index + 1);
+  if (!slice.length) {
+    return 0.5;
+  }
+
+  const rangeHigh = Math.max(...slice.map((item) => item.high));
+  const rangeLow = Math.min(...slice.map((item) => item.low));
+  const range = rangeHigh - rangeLow;
+  if (range <= 0) {
+    return 0.5;
+  }
+
+  const zoneMid = (zone.zoneLow + zone.zoneHigh) / 2;
+  return (zoneMid - rangeLow) / range;
+}
+
 function findOrderBlocks(rows, impulseThreshold = 1.5, lookback = 20, searchBack = 6) {
   if (rows.length < lookback + 10) {
     return [];
@@ -197,23 +214,31 @@ function findOrderBlocks(rows, impulseThreshold = 1.5, lookback = 20, searchBack
     if (bullishBreak) {
       const source = [...candidates].reverse().find((item) => item.close < item.open);
       if (source) {
-        zones.push({
+        const zone = {
           direction: "bullish",
           formedAt: source.datetime,
           zoneLow: source.low,
           zoneHigh: source.open
-        });
+        };
+        const positionRatio = structurePositionRatio(rows, zone, idx);
+        if (positionRatio <= 0.48) {
+          zones.push(zone);
+        }
       }
     }
     if (bearishBreak) {
       const source = [...candidates].reverse().find((item) => item.close > item.open);
       if (source) {
-        zones.push({
+        const zone = {
           direction: "bearish",
           formedAt: source.datetime,
           zoneLow: source.open,
           zoneHigh: source.high
-        });
+        };
+        const positionRatio = structurePositionRatio(rows, zone, idx);
+        if (positionRatio >= 0.52) {
+          zones.push(zone);
+        }
       }
     }
   }
