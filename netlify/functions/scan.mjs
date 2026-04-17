@@ -185,6 +185,39 @@ function structurePositionRatio(rows, zone, index, window = 40) {
   return (zoneMid - rangeLow) / range;
 }
 
+function currentRangePositionRatio(rows, price, window = 40) {
+  const slice = rows.slice(Math.max(0, rows.length - window));
+  if (!slice.length) {
+    return 0.5;
+  }
+
+  const rangeHigh = Math.max(...slice.map((item) => item.high));
+  const rangeLow = Math.min(...slice.map((item) => item.low));
+  const range = rangeHigh - rangeLow;
+  if (range <= 0) {
+    return 0.5;
+  }
+
+  return (price - rangeLow) / range;
+}
+
+function favorableZonePosition(price, zone, direction) {
+  if (price < zone.zoneLow || price > zone.zoneHigh) {
+    return true;
+  }
+
+  const width = zone.zoneHigh - zone.zoneLow;
+  if (width <= 0) {
+    return false;
+  }
+
+  const pricePosition = (price - zone.zoneLow) / width;
+  if (direction === "bullish") {
+    return pricePosition <= 0.6;
+  }
+  return pricePosition >= 0.4;
+}
+
 function findOrderBlocks(rows, impulseThreshold = 1.5, lookback = 20, searchBack = 6) {
   if (rows.length < lookback + 10) {
     return [];
@@ -505,6 +538,7 @@ async function scanInstrument(symbol, options = {}) {
     }
 
     const currentPrice = rows[rows.length - 1].close;
+    const currentRangeRatio = currentRangePositionRatio(rows, currentPrice);
     const zones = findOrderBlocks(rows, impulse);
     const directionalZones = zones.filter((zone) => allowedDirections.includes(zone.direction));
     let best = null;
@@ -512,6 +546,15 @@ async function scanInstrument(symbol, options = {}) {
     directionalZones.forEach((zone) => {
       const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
       if (!(insideZone === "yes" || distancePct <= proximity)) {
+        return;
+      }
+      if (!favorableZonePosition(currentPrice, zone, zone.direction)) {
+        return;
+      }
+      if (zone.direction === "bullish" && currentRangeRatio > 0.62) {
+        return;
+      }
+      if (zone.direction === "bearish" && currentRangeRatio < 0.38) {
         return;
       }
 
@@ -565,6 +608,7 @@ async function scanInstrument(symbol, options = {}) {
         distancePct: Number(distancePct.toFixed(2)),
         insideZone,
         formedAt: zone.formedAt,
+        currentRangeRatio: Number(currentRangeRatio.toFixed(2)),
         roomPct,
         hasOpposingRoom,
         sweepConfirmed,
