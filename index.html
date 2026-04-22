@@ -122,15 +122,13 @@
             <input id="impulse" type="number" min="1.1" max="3" step="0.1" value="1.5" />
           </label>
           <label class="control">
-            <span>Min matching timeframes</span>
-            <input id="minTimeframes" type="number" min="1" max="3" value="1" />
+            <span>Scan scope</span>
+            <input id="minTimeframes" type="text" value="All valid timeframes returned" disabled />
           </label>
           <label class="control">
-            <span>Scalp mode</span>
-            <select id="scalpMode">
-              <option value="include">Include 1H scalps</option>
-              <option value="off">Swing only</option>
-              <option value="only">Scalp only</option>
+            <span>Structure scope</span>
+            <select id="scalpMode" disabled>
+              <option value="include" selected>All swing + scalp setups</option>
             </select>
           </label>
           <label class="control">

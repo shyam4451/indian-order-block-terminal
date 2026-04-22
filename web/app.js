@@ -150,6 +150,25 @@ function applyPreset(preset) {
   renderAll();
 }
 
+function normalizeFiltersForPayload(payload) {
+  const rows = payload?.stocks || [];
+  const hasScalps = rows.some((row) => row.mode === "Scalp");
+  const hasSwings = rows.some((row) => row.mode === "Swing");
+
+  if (elements.scalpMode.value === "off" && elements.modeFilter.value === "Scalp") {
+    elements.modeFilter.value = hasSwings ? "Swing" : "all";
+  }
+  if (elements.scalpMode.value === "only" && elements.modeFilter.value === "Swing") {
+    elements.modeFilter.value = hasScalps ? "Scalp" : "all";
+  }
+  if (!hasScalps && elements.modeFilter.value === "Scalp") {
+    elements.modeFilter.value = "all";
+  }
+  if (!hasSwings && elements.modeFilter.value === "Swing") {
+    elements.modeFilter.value = "all";
+  }
+}
+
 function buildSetupTypeOptions(rows) {
   const values = [...new Set(rows.map((row) => row.setupType))].sort();
   elements.setupTypeFilter.innerHTML = ['<option value="all">All setup types</option>', ...values.map((value) => `<option value="${value}">${value}</option>`)].join("");
@@ -188,6 +207,31 @@ function filterRows(rows) {
     if (Number(row.distancePct || 0) > Number(elements.maxDistanceFilter.value || 0)) return false;
     return true;
   }));
+}
+
+function emptyStateReason(payload) {
+  const rows = payload?.stocks || [];
+  if (!rows.length) {
+    return "The scan returned no live setups from the engine. Try increasing distance from zone, lowering impulse threshold, or switching scalp mode to include more structure types.";
+  }
+
+  const reasons = [];
+  if (elements.modeFilter.value === "Scalp" && !rows.some((row) => row.mode === "Scalp")) {
+    reasons.push("Mode filter is set to Scalp only, but this scan did not return scalp setups.");
+  }
+  if (elements.modeFilter.value === "Swing" && !rows.some((row) => row.mode === "Swing")) {
+    reasons.push("Mode filter is set to Swing only, but this scan did not return swing setups.");
+  }
+  if (elements.divergenceFilter.value === "required" && !rows.some((row) => row.divergence)) {
+    reasons.push("Divergence required is excluding all current setups.");
+  }
+  if (elements.confirmedFilter.value === "required" && !rows.some((row) => row.setupState === "LTF Confirmed")) {
+    reasons.push("Confirmed only is excluding all current setups.");
+  }
+  if (Number(elements.minScoreFilter.value || 0) >= 50) {
+    reasons.push(`Minimum score is set to ${elements.minScoreFilter.value}, which may be too strict for the current market scan.`);
+  }
+  return reasons[0] || "The current filters removed all returned setups. Try the Swing Reversals or High Score Only presets to reset the board quickly.";
 }
 
 function tapeCardMarkup(item) {
@@ -515,6 +559,7 @@ function renderStocks(rows) {
       <tr>
         <td colspan="8" class="empty-state">
           No setups matched the current filters.
+          <div class="empty-copy">${emptyStateReason(state.latestPayload)}</div>
           <div class="empty-actions">
             <button class="preset-button" data-preset="swing">Swing Reversals</button>
             <button class="preset-button" data-preset="divergence">Divergence Setups</button>
@@ -585,6 +630,7 @@ function renderAll() {
   if (!payload) {
     return;
   }
+  normalizeFiltersForPayload(payload);
   state.visibleRows = filterRows(payload.stocks || []);
   if (!state.visibleRows.some((item) => item.signal.signalId === state.selectedSignalId)) {
     state.selectedSignalId = state.visibleRows[0]?.signal.signalId || null;
@@ -612,13 +658,15 @@ async function runScan() {
   elements.scanButton.disabled = true;
   elements.scanButton.textContent = "Scanning...";
 
+  // The scan always returns the full supported structure set first.
+  // Narrowing to swing/scalp/direction happens in the result filters below.
   const params = new URLSearchParams({
     universe: elements.universe.value,
     limit: elements.limit.value,
     proximity: elements.proximity.value,
     impulse: elements.impulse.value,
-    minTimeframes: elements.minTimeframes.value,
-    scalpMode: elements.scalpMode.value,
+    minTimeframes: "1",
+    scalpMode: "include",
     scalpStyle: elements.scalpStyle.value,
     pivotLength: elements.pivotLength.value
   });
@@ -630,6 +678,7 @@ async function runScan() {
     }
     const payload = await response.json();
     state.latestPayload = payload;
+    normalizeFiltersForPayload(payload);
     buildSetupTypeOptions(payload.stocks || []);
     state.selectedSignalId = payload.stocks?.[0]?.signal?.signalId || null;
     renderAll();
