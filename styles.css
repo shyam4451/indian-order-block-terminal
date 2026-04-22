@@ -357,7 +357,7 @@ h3,
 }
 
 .layout {
-  grid-template-columns: minmax(0, 1.5fr) 390px;
+  grid-template-columns: minmax(0, 1fr) 340px;
   align-items: start;
 }
 
@@ -369,6 +369,7 @@ h3,
 
 .table-wrap {
   overflow: auto;
+  position: relative;
   border-radius: 18px;
   border: 1px solid var(--line);
   background: rgba(4, 10, 16, 0.58);
@@ -376,6 +377,7 @@ h3,
 
 table {
   width: 100%;
+  min-width: 1320px;
   border-collapse: collapse;
 }
 
@@ -402,6 +404,25 @@ th {
   white-space: nowrap;
 }
 
+th:last-child,
+td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, rgba(7, 14, 24, 0.98), rgba(7, 14, 24, 0.98));
+  box-shadow: -12px 0 24px rgba(4, 10, 16, 0.56);
+}
+
+tbody td:last-child {
+  background: linear-gradient(180deg, rgba(8, 16, 26, 0.98), rgba(8, 16, 26, 0.98));
+}
+
+tbody td[colspan] {
+  position: static;
+  box-shadow: none;
+  background: transparent;
+}
+
 tbody tr {
   transition: background 0.16s ease;
 }
@@ -414,6 +435,13 @@ tbody tr:hover,
 .row-symbol {
   display: grid;
   gap: 4px;
+}
+
+.row-actions {
+  display: grid;
+  gap: 8px;
+  min-width: 112px;
+  align-items: stretch;
 }
 
 .score-block {
@@ -560,6 +588,20 @@ tbody tr:hover,
   }
 }
 
+@media (max-width: 1480px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sidebar .note-card {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 1240px) {
   .hero,
   .layout {
@@ -593,11 +635,14 @@ tbody tr:hover,
   .controls-head,
   .section-head,
   .index-head,
-  .row-actions,
   .inspector-head,
   .featured-head,
   .stack-inline {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .sidebar {
+    grid-template-columns: 1fr;
   }
 }

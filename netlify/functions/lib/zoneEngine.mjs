@@ -140,7 +140,10 @@ function baseQualityScore({ baseCandles, departureStrength, structureBreak, disp
   return clamp(Math.round(score), 0, 30);
 }
 
-export function buildZones(rows, timeframeName, impulseThreshold = 1.5) {
+export function buildZones(rows, timeframeName, impulseThreshold = 1.5, options = {}) {
+  const {
+    allowLooseDemand = false
+  } = options;
   const swingWindow = timeframeName === "Weekly" ? 2 : timeframeName === "1H" ? 4 : 3;
   const departureWindow = timeframeName === "Weekly" ? 4 : timeframeName === "1H" ? 8 : 6;
   const ageLimit = timeframeName === "Weekly" ? 110 : timeframeName === "1H" ? 80 : 90;
@@ -195,11 +198,16 @@ export function buildZones(rows, timeframeName, impulseThreshold = 1.5) {
       const widthPct = zoneWidthPct(zone, row.close);
       const baseQuality = baseQualityScore({ baseCandles, overlap, ...departure });
 
+      const demandImpulseFloor = allowLooseDemand ? impulseThreshold * 0.92 : impulseThreshold;
+      const demandPositionLimit = allowLooseDemand ? 0.64 : 0.56;
+      const demandRetestLimit = allowLooseDemand ? 4 : 3;
+      const demandWidthLimit = allowLooseDemand ? 22 : 18;
+
       if (
-        departure.departureStrength >= impulseThreshold &&
-        positionRatio <= 0.56 &&
-        retests <= 3 &&
-        widthPct <= 18
+        departure.departureStrength >= demandImpulseFloor &&
+        positionRatio <= demandPositionLimit &&
+        retests <= demandRetestLimit &&
+        widthPct <= demandWidthLimit
       ) {
         zones.push({
           ...zone,
@@ -277,7 +285,7 @@ export function barsSinceLastZoneTouch(rows, zone) {
   return barsSince(rows, (row) => zoneTouched(row, zone));
 }
 
-export function favorableZonePosition(price, zone, direction) {
+export function favorableZonePosition(price, zone, direction, allowLoosePosition = false) {
   if (price < zone.zoneLow || price > zone.zoneHigh) {
     return true;
   }
@@ -287,9 +295,9 @@ export function favorableZonePosition(price, zone, direction) {
   }
   const pricePosition = (price - zone.zoneLow) / width;
   if (direction === "bullish") {
-    return pricePosition <= 0.8;
+    return pricePosition <= (allowLoosePosition ? 0.92 : 0.8);
   }
-  return pricePosition >= 0.2;
+  return pricePosition >= (allowLoosePosition ? 0.12 : 0.2);
 }
 
 export function findNearestOpposingZone(zones, currentPrice, direction) {
@@ -303,14 +311,16 @@ export function findNearestOpposingZone(zones, currentPrice, direction) {
     .sort((a, b) => b.zoneHigh - a.zoneHigh)[0] || null;
 }
 
-export function hasAdequateRoom(zone, opposingZone, currentPrice) {
+export function hasAdequateRoom(zone, opposingZone, currentPrice, allowLooseRoom = false) {
   if (!opposingZone || !currentPrice) {
     return true;
   }
   const roomPct = zone.direction === "bullish"
     ? ((opposingZone.zoneLow - currentPrice) / currentPrice) * 100
     : ((currentPrice - opposingZone.zoneHigh) / currentPrice) * 100;
-  const minRoomPct = Math.max(zoneWidthPct(zone, currentPrice) * 1.2, 0.9);
+  const minRoomPct = allowLooseRoom
+    ? Math.max(zoneWidthPct(zone, currentPrice) * 0.8, 0.45)
+    : Math.max(zoneWidthPct(zone, currentPrice) * 1.2, 0.9);
   return roomPct >= minRoomPct;
 }
 

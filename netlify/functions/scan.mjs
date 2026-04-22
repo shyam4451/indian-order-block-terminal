@@ -174,6 +174,7 @@ async function scanInstrument(symbol, options = {}) {
   } = options;
 
   const marketType = options.marketType || resolveMarketType(symbol, universe);
+  const isCashLongScan = marketType === "Cash" && allowedDirections.length === 1 && allowedDirections[0] === "bullish";
   const enabledHtfTimeframes = HTF_TIMEFRAMES.filter((timeframe) => timeframeAllowed(timeframe.name, scalpMode));
   const requiredTriggerNames = [...new Set(
     enabledHtfTimeframes.flatMap((timeframe) => eligibleTriggerTimeframes(timeframe.name, scalpStyle))
@@ -225,24 +226,33 @@ async function scanInstrument(symbol, options = {}) {
 
     const currentPrice = rows[rows.length - 1].close;
     const trendContext = buildTrendContext(rows);
-    const zones = buildZones(rows, timeframe.name, impulse).filter((zone) => allowedDirections.includes(zone.direction));
+    const zoneImpulse = isCashLongScan ? Math.max(1.15, impulse - 0.2) : impulse;
+    const zones = buildZones(rows, timeframe.name, zoneImpulse, {
+      allowLooseDemand: isCashLongScan && timeframe.name !== "1H"
+    }).filter((zone) => allowedDirections.includes(zone.direction));
     const triggerNames = eligibleTriggerTimeframes(timeframe.name, scalpStyle);
     let best = null;
 
     zones.forEach((zone) => {
       const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
       const touchAge = barsSinceLastZoneTouch(rows, zone);
-      const maxTouchAge = timeframe.name === "Weekly" ? 8 : timeframe.name === "1H" ? 12 : 10;
-      if (!(insideZone === "yes" || distancePct <= proximity)) {
+      const maxTouchAge = isCashLongScan
+        ? (timeframe.name === "Weekly" ? 14 : timeframe.name === "1H" ? 16 : 14)
+        : (timeframe.name === "Weekly" ? 8 : timeframe.name === "1H" ? 12 : 10);
+      const effectiveProximity = isCashLongScan && zone.zoneType === "demand"
+        ? Math.max(proximity, timeframe.name === "Weekly" ? 2.2 : 1.6)
+        : proximity;
+      if (!(insideZone === "yes" || distancePct <= effectiveProximity)) {
         return;
       }
       if (insideZone !== "yes" && touchAge > maxTouchAge) {
         return;
       }
-      if (!favorableZonePosition(currentPrice, zone, zone.direction)) {
+      const allowLooseZonePosition = isCashLongScan && zone.zoneType === "demand";
+      if (!favorableZonePosition(currentPrice, zone, zone.direction, allowLooseZonePosition)) {
         return;
       }
-      if (zone.direction === "bullish" && trendContext.currentRangeRatio > (timeframe.name === "1H" ? 0.84 : 0.76)) {
+      if (zone.direction === "bullish" && trendContext.currentRangeRatio > (isCashLongScan ? 0.9 : (timeframe.name === "1H" ? 0.84 : 0.76))) {
         return;
       }
       if (zone.direction === "bearish" && trendContext.currentRangeRatio < (timeframe.name === "1H" ? 0.16 : 0.24)) {
@@ -250,7 +260,7 @@ async function scanInstrument(symbol, options = {}) {
       }
 
       const opposingZone = findNearestOpposingZone(zones, currentPrice, zone.direction);
-      if (!hasAdequateRoom(zone, opposingZone, currentPrice)) {
+      if (!hasAdequateRoom(zone, opposingZone, currentPrice, isCashLongScan)) {
         return;
       }
 
