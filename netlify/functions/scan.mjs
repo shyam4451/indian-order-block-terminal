@@ -1,591 +1,161 @@
-const NSE_EQUITY_CSV_URL = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv";
-
-const HTF_TIMEFRAMES = [
-  { name: "Daily", interval: "1d", range: "2y", weight: 1.5 },
-  { name: "Weekly", interval: "1wk", range: "5y", weight: 2.2 }
-];
-
-const LTF_TIMEFRAMES = [
-  { name: "1H", interval: "1h", range: "60d", synthetic4h: false, weight: 1.0 },
-  { name: "4H", interval: "1h", range: "60d", synthetic4h: true, weight: 1.35 }
-];
-
-const MARKET_TAPE_SYMBOLS = [
-  { name: "NIFTY 50", symbol: "^NSEI" },
-  { name: "BANK NIFTY", symbol: "^NSEBANK" },
-  { name: "SENSEX", symbol: "^BSESN" },
-  { name: "INDIA VIX", symbol: "^INDIAVIX" }
-];
-
-const NIFTY50 = [
-  "ADANIENT.NS", "ADANIPORTS.NS", "APOLLOHOSP.NS", "ASIANPAINT.NS", "AXISBANK.NS", "BAJAJ-AUTO.NS",
-  "BAJFINANCE.NS", "BAJAJFINSV.NS", "BEL.NS", "BHARTIARTL.NS", "BPCL.NS", "BRITANNIA.NS", "CIPLA.NS",
-  "COALINDIA.NS", "DRREDDY.NS", "EICHERMOT.NS", "ETERNAL.NS", "GRASIM.NS", "HCLTECH.NS", "HDFCBANK.NS",
-  "HDFCLIFE.NS", "HEROMOTOCO.NS", "HINDALCO.NS", "HINDUNILVR.NS", "ICICIBANK.NS", "INDUSINDBK.NS",
-  "INFY.NS", "ITC.NS", "JIOFIN.NS", "JSWSTEEL.NS", "KOTAKBANK.NS", "LT.NS", "M&M.NS", "MARUTI.NS",
-  "NESTLEIND.NS", "NTPC.NS", "ONGC.NS", "POWERGRID.NS", "RELIANCE.NS", "SBILIFE.NS", "SBIN.NS",
-  "SHRIRAMFIN.NS", "SUNPHARMA.NS", "TATACONSUM.NS", "TATAMOTORS.NS", "TATASTEEL.NS", "TCS.NS",
-  "TECHM.NS", "TITAN.NS", "TRENT.NS", "ULTRACEMCO.NS", "WIPRO.NS"
-];
-
-const FNO_STOCKS = [
-  "RELIANCE.NS", "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "INFY.NS", "TCS.NS", "AXISBANK.NS",
-  "LT.NS", "ITC.NS", "BHARTIARTL.NS", "TATAMOTORS.NS", "MARUTI.NS", "SUNPHARMA.NS", "BAJFINANCE.NS",
-  "KOTAKBANK.NS", "HINDUNILVR.NS", "ULTRACEMCO.NS", "ADANIENT.NS", "ADANIPORTS.NS", "TATASTEEL.NS",
-  "JSWSTEEL.NS", "HINDALCO.NS", "POWERGRID.NS", "ONGC.NS", "NTPC.NS", "COALINDIA.NS", "DRREDDY.NS",
-  "CIPLA.NS", "EICHERMOT.NS", "GRASIM.NS"
-];
-
-const INDEX_INSTRUMENTS = [
-  { name: "NIFTY 50", sourceSymbol: "^NSEI", tvSymbol: "NSE:NIFTY1!" },
-  { name: "BANK NIFTY", sourceSymbol: "^NSEBANK", tvSymbol: "NSE:BANKNIFTY1!" },
-  { name: "FIN NIFTY", sourceSymbol: "NIFTYFINSRV25_50.NS", tvSymbol: "NSE:FINNIFTY1!" },
-  { name: "MIDCAP NIFTY", sourceSymbol: "NIFTY_MID_SELECT.NS", tvSymbol: "NSE:MIDCPNIFTY1!" }
-];
-
-function csvToRows(text) {
-  const [headerLine, ...lines] = text.trim().split(/\r?\n/);
-  const headers = headerLine.split(",").map((item) => item.trim().replace(/^"|"$/g, ""));
-  return lines.map((line) => {
-    const columns = line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g) || [];
-    return headers.reduce((record, header, index) => {
-      record[header] = (columns[index] || "").replace(/^"|"$/g, "").trim();
-      return record;
-    }, {});
-  });
-}
-
-function buildStableUniverseOrder(symbols) {
-  const buckets = new Map();
-  symbols.forEach((symbol) => {
-    const bucketKey = symbol[0]?.toUpperCase() || "#";
-    if (!buckets.has(bucketKey)) {
-      buckets.set(bucketKey, []);
-    }
-    buckets.get(bucketKey).push(symbol);
-  });
-
-  const orderedKeys = [...buckets.keys()].sort();
-  const stable = [];
-  let added = true;
-
-  while (added) {
-    added = false;
-    orderedKeys.forEach((key) => {
-      const bucket = buckets.get(key);
-      if (bucket?.length) {
-        stable.push(bucket.shift());
-        added = true;
-      }
-    });
-  }
-
-  return stable;
-}
-
-async function fetchNseSymbols(limit = 100) {
-  const response = await fetch(NSE_EQUITY_CSV_URL, {
-    headers: { "user-agent": "Mozilla/5.0" }
-  });
-  if (!response.ok) {
-    throw new Error(`NSE symbol download failed: ${response.status}`);
-  }
-
-  const rows = csvToRows(await response.text());
-  const symbols = rows
-    .filter((row) => row.SERIES === "EQ" && row.SYMBOL)
-    .map((row) => `${row.SYMBOL}.NS`);
-  const stableOrder = buildStableUniverseOrder(symbols);
-
-  if (limit >= stableOrder.length) {
-    return stableOrder;
-  }
-
-  return stableOrder.slice(0, limit);
-}
-
-async function fetchYahooCandles(symbol, interval, range) {
-  const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`);
-  url.searchParams.set("interval", interval);
-  url.searchParams.set("range", range);
-  url.searchParams.set("includePrePost", "false");
-  url.searchParams.set("events", "div,splits");
-
-  const response = await fetch(url.toString(), {
-    headers: { "user-agent": "Mozilla/5.0" }
-  });
-
-  if (!response.ok) {
-    throw new Error(`Yahoo chart request failed for ${symbol}: ${response.status}`);
-  }
-
-  const payload = await response.json();
-  const result = payload?.chart?.result?.[0];
-  const quote = result?.indicators?.quote?.[0];
-  if (!result || !quote || !Array.isArray(result.timestamp)) {
-    return [];
-  }
-
-  const rows = [];
-  result.timestamp.forEach((timestamp, index) => {
-    const open = quote.open?.[index];
-    const high = quote.high?.[index];
-    const low = quote.low?.[index];
-    const close = quote.close?.[index];
-    const volume = quote.volume?.[index] ?? 0;
-    if ([open, high, low, close].some((value) => value === null || value === undefined)) {
-      return;
-    }
-    rows.push({
-      datetime: new Date(timestamp * 1000).toISOString(),
-      open,
-      high,
-      low,
-      close,
-      volume
-    });
-  });
-
-  return rows;
-}
-
-function buildSynthetic4H(rows) {
-  const sessions = new Map();
-  rows.forEach((row) => {
-    const key = row.datetime.slice(0, 10);
-    if (!sessions.has(key)) {
-      sessions.set(key, []);
-    }
-    sessions.get(key).push(row);
-  });
-
-  const blocks = [];
-  [...sessions.values()].forEach((session) => {
-    session.sort((a, b) => a.datetime.localeCompare(b.datetime));
-    for (let i = 0; i < session.length; i += 4) {
-      const block = session.slice(i, i + 4);
-      if (block.length < 2) {
-        continue;
-      }
-      blocks.push({
-        datetime: block[block.length - 1].datetime,
-        open: block[0].open,
-        high: Math.max(...block.map((item) => item.high)),
-        low: Math.min(...block.map((item) => item.low)),
-        close: block[block.length - 1].close,
-        volume: block.reduce((sum, item) => sum + (item.volume || 0), 0)
-      });
-    }
-  });
-
-  return blocks;
-}
-
-function rollingAverage(values, window) {
-  return values.map((_, index) => {
-    if (index + 1 < window) {
-      return null;
-    }
-    const slice = values.slice(index + 1 - window, index + 1);
-    return slice.reduce((sum, value) => sum + value, 0) / slice.length;
-  });
-}
-
-function structurePositionRatio(rows, zone, index, window = 40) {
-  const slice = rows.slice(Math.max(0, index - window), index + 1);
-  if (!slice.length) {
-    return 0.5;
-  }
-
-  const rangeHigh = Math.max(...slice.map((item) => item.high));
-  const rangeLow = Math.min(...slice.map((item) => item.low));
-  const range = rangeHigh - rangeLow;
-  if (range <= 0) {
-    return 0.5;
-  }
-
-  const zoneMid = (zone.zoneLow + zone.zoneHigh) / 2;
-  return (zoneMid - rangeLow) / range;
-}
-
-function currentRangePositionRatio(rows, price, window = 40) {
-  const slice = rows.slice(Math.max(0, rows.length - window));
-  if (!slice.length) {
-    return 0.5;
-  }
-
-  const rangeHigh = Math.max(...slice.map((item) => item.high));
-  const rangeLow = Math.min(...slice.map((item) => item.low));
-  const range = rangeHigh - rangeLow;
-  if (range <= 0) {
-    return 0.5;
-  }
-
-  return (price - rangeLow) / range;
-}
-
-function countZoneRetests(rows, zone, formedIndex, direction) {
-  let touches = 0;
-  for (let index = formedIndex + 2; index < rows.length; index += 1) {
-    const row = rows[index];
-    const touched = row.low <= zone.zoneHigh && row.high >= zone.zoneLow;
-    if (!touched) {
-      continue;
-    }
-
-    if (direction === "bullish" && row.close < zone.zoneLow) {
-      return Number.POSITIVE_INFINITY;
-    }
-    if (direction === "bearish" && row.close > zone.zoneHigh) {
-      return Number.POSITIVE_INFINITY;
-    }
-
-    touches += 1;
-  }
-  return touches;
-}
-
-function barsSinceLastZoneTouch(rows, zone) {
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    const row = rows[index];
-    const touched = row.low <= zone.zoneHigh && row.high >= zone.zoneLow;
-    if (touched) {
-      return rows.length - 1 - index;
-    }
-  }
-  return Number.POSITIVE_INFINITY;
-}
-
-function favorableZonePosition(price, zone, direction) {
-  if (price < zone.zoneLow || price > zone.zoneHigh) {
-    return true;
-  }
-
-  const width = zone.zoneHigh - zone.zoneLow;
-  if (width <= 0) {
-    return false;
-  }
-
-  const pricePosition = (price - zone.zoneLow) / width;
-  if (direction === "bullish") {
-    return pricePosition <= 0.78;
-  }
-  return pricePosition >= 0.22;
-}
-
-function findDemandSupplyZones(rows, timeframeName, impulseThreshold = 1.5) {
-  const swingWindow = timeframeName === "Weekly" ? 2 : 3;
-  const departureWindow = timeframeName === "Weekly" ? 4 : 6;
-  const ageLimit = timeframeName === "Weekly" ? 110 : 90;
-  if (rows.length < swingWindow * 2 + departureWindow + 10) {
-    return [];
-  }
-
-  const ranges = rows.map((row) => Math.max(0, row.high - row.low));
-  const avgRanges = rollingAverage(ranges, 10);
-  const zones = [];
-
-  for (let idx = swingWindow; idx < rows.length - departureWindow; idx += 1) {
-    const row = rows[idx];
-    const avgRange = avgRanges[idx];
-    if (!avgRange) {
-      continue;
-    }
-
-    const left = rows.slice(idx - swingWindow, idx);
-    const right = rows.slice(idx + 1, idx + 1 + swingWindow);
-    if (left.length < swingWindow || right.length < swingWindow) {
-      continue;
-    }
-
-    const future = rows.slice(idx + 1, idx + 1 + departureWindow);
-    const maxFutureHigh = Math.max(...future.map((item) => item.high));
-    const minFutureLow = Math.min(...future.map((item) => item.low));
-
-    const isPivotLow = row.low <= Math.min(...left.map((item) => item.low)) && row.low <= Math.min(...right.map((item) => item.low));
-    const isPivotHigh = row.high >= Math.max(...left.map((item) => item.high)) && row.high >= Math.max(...right.map((item) => item.high));
-
-    if (isPivotLow) {
-      const zone = {
-        direction: "bullish",
-        formedAt: row.datetime,
-        zoneLow: row.low,
-        zoneHigh: Math.max(row.open, row.close)
-      };
-      const departureStrength = (maxFutureHigh - zone.zoneHigh) / Math.max(avgRange, 0.01);
-      const positionRatio = structurePositionRatio(rows, zone, idx);
-      const retests = countZoneRetests(rows, zone, idx, "bullish");
-      const ageBars = rows.length - idx - 1;
-      const widthPct = zoneWidthPct(zone, row.close);
-
-      if (
-        departureStrength >= impulseThreshold &&
-        positionRatio <= 0.5 &&
-        retests <= 3 &&
-        ageBars <= ageLimit &&
-        widthPct <= 15
-      ) {
-        zones.push({ ...zone, retests, ageBars });
-      }
-    }
-
-    if (isPivotHigh) {
-      const zone = {
-        direction: "bearish",
-        formedAt: row.datetime,
-        zoneLow: Math.min(row.open, row.close),
-        zoneHigh: row.high
-      };
-      const departureStrength = (zone.zoneLow - minFutureLow) / Math.max(avgRange, 0.01);
-      const positionRatio = structurePositionRatio(rows, zone, idx);
-      const retests = countZoneRetests(rows, zone, idx, "bearish");
-      const ageBars = rows.length - idx - 1;
-      const widthPct = zoneWidthPct(zone, row.close);
-
-      if (
-        departureStrength >= impulseThreshold &&
-        positionRatio >= 0.5 &&
-        retests <= 3 &&
-        ageBars <= ageLimit &&
-        widthPct <= 15
-      ) {
-        zones.push({ ...zone, retests, ageBars });
-      }
-    }
-  }
-
-  const unique = [];
-  const seen = new Set();
-  [...zones].reverse().forEach((zone) => {
-    const key = `${zone.direction}:${zone.zoneLow.toFixed(2)}:${zone.zoneHigh.toFixed(2)}`;
-    if (seen.has(key) || unique.length >= 6) {
-      return;
-    }
-    seen.add(key);
-    unique.push(zone);
-  });
-
-  return unique.reverse();
-}
-
-function distanceToZone(price, zoneLow, zoneHigh) {
-  if (price >= zoneLow && price <= zoneHigh) {
-    return { distancePct: 0, insideZone: "yes" };
-  }
-  if (price < zoneLow) {
-    return { distancePct: ((zoneLow - price) / price) * 100, insideZone: "no" };
-  }
-  return { distancePct: ((price - zoneHigh) / price) * 100, insideZone: "no" };
-}
-
-function nearZoneInteraction(row, zone, direction) {
-  const padding = (zone.zoneHigh - zone.zoneLow) * 0.15;
-  if (direction === "bullish") {
-    return row.low <= zone.zoneHigh + padding && row.low >= zone.zoneLow - (padding * 2);
-  }
-  return row.high >= zone.zoneLow - padding && row.high <= zone.zoneHigh + (padding * 2);
-}
-
-function zoneWidthPct(zone, referencePrice) {
-  if (!referencePrice) {
-    return 0;
-  }
-  return ((zone.zoneHigh - zone.zoneLow) / referencePrice) * 100;
-}
-
-function findNearestOpposingZone(zones, currentPrice, direction) {
-  if (direction === "bullish") {
-    return zones
-      .filter((zone) => zone.direction === "bearish" && zone.zoneLow > currentPrice)
-      .sort((a, b) => a.zoneLow - b.zoneLow)[0] || null;
-  }
-
-  return zones
-    .filter((zone) => zone.direction === "bullish" && zone.zoneHigh < currentPrice)
-    .sort((a, b) => b.zoneHigh - a.zoneHigh)[0] || null;
-}
-
-function hasAdequateRoom(zone, opposingZone, currentPrice) {
-  if (!opposingZone || !currentPrice) {
-    return true;
-  }
-
-  const roomPct = zone.direction === "bullish"
-    ? ((opposingZone.zoneLow - currentPrice) / currentPrice) * 100
-    : ((currentPrice - opposingZone.zoneHigh) / currentPrice) * 100;
-
-  const minimumRoomPct = Math.max(zoneWidthPct(zone, currentPrice) * 1.25, 1.1);
-  return roomPct >= minimumRoomPct;
-}
-
-function zoneFreshnessBoost(formedAt, timeframeName) {
-  const formedTs = Date.parse(formedAt || "");
-  if (Number.isNaN(formedTs)) {
-    return 0;
-  }
-
-  const ageDays = Math.max(0, (Date.now() - formedTs) / (1000 * 60 * 60 * 24));
-  const horizon = timeframeName === "Weekly" ? 420 : 180;
-  return Math.max(0, 1.6 - (ageDays / horizon) * 1.6);
-}
-
-function detectLowerTimeframeSweep(rows, zone, direction, lookback = 18, evaluationWindow = 8) {
-  if (rows.length < lookback + 3) {
-    return { confirmed: false, at: null };
-  }
-
-  const start = Math.max(lookback + 1, rows.length - evaluationWindow);
-  for (let idx = rows.length - 1; idx >= start; idx -= 1) {
-    const candle = rows[idx];
-    const recent = rows.slice(idx - lookback, idx);
-    if (!recent.length || !nearZoneInteraction(candle, zone, direction)) {
-      continue;
-    }
-
-    if (direction === "bullish") {
-      const priorSwingLow = Math.min(...recent.map((item) => item.low));
-      const reclaimed = candle.low < priorSwingLow && candle.close > priorSwingLow;
-      if (reclaimed) {
-        return { confirmed: true, at: candle.datetime };
-      }
-      continue;
-    }
-
-    const priorSwingHigh = Math.max(...recent.map((item) => item.high));
-    const reclaimed = candle.high > priorSwingHigh && candle.close < priorSwingHigh;
-    if (reclaimed) {
-      return { confirmed: true, at: candle.datetime };
-    }
-  }
-
-  return { confirmed: false, at: null };
-}
-
-function detectLowerTimeframeConfirmation(rows, direction, sweepAt = null) {
-  const filtered = sweepAt
-    ? rows.filter((row) => row.datetime >= sweepAt)
-    : rows;
-  const sample = filtered.length >= 4 ? filtered.slice(-4) : filtered;
-
-  if (sample.length < 2) {
-    return false;
-  }
-
-  for (let index = 1; index < sample.length; index += 1) {
-    const current = sample[index];
-    const previous = sample[index - 1];
-    if (direction === "bullish" && current.close > current.open && current.close > previous.high) {
-      return true;
-    }
-    if (direction === "bearish" && current.close < current.open && current.close < previous.low) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function deriveSetupState({ insideZone, sweepConfirmed, confirmationCandle, invalidated }) {
-  if (invalidated) return "Invalidated";
-  if (sweepConfirmed && confirmationCandle) return "LTF Confirmed";
-  if (sweepConfirmed) return "LTF Sweep Seen";
-  if (insideZone === "yes") return "At HTF Zone";
-  return "Near HTF Zone";
-}
-
-function scoreCandidate(match) {
-  const htfWeight = { Daily: 1.5, Weekly: 2.2 }[match.zoneTimeframe] || 1;
-  const triggerWeight = { "1H": 1.0, "4H": 1.3, none: 0 }[match.triggerTimeframe || "none"] || 0;
-  return Number((
-    Math.max(0, 5 - match.distancePct) * htfWeight +
-    (match.insideZone === "yes" ? 1.5 : 0.5) +
-    (match.sweepConfirmed ? 2.5 : 0) +
-    (match.confirmationCandle ? 1.75 : 0) +
-    (match.hasOpposingRoom ? 1.2 : -2.5) +
-    (match.roomPct !== null ? Math.min(match.roomPct, 4) * 0.35 : 0) +
-    Math.max(0, 1.4 - (match.retests || 0) * 0.55) +
-    zoneFreshnessBoost(match.formedAt, match.zoneTimeframe) +
-    triggerWeight
-  ).toFixed(2));
-}
-
-function invalidationHit(price, zone, direction) {
-  const buffer = Math.max((zone.zoneHigh - zone.zoneLow) * 0.12, price * 0.002);
-  if (direction === "bullish") {
-    return price < zone.zoneLow - buffer;
-  }
-  return price > zone.zoneHigh + buffer;
-}
-
-async function fetchYahooQuote(symbol) {
-  const rows = await fetchYahooCandles(symbol, "1d", "5d");
-  if (rows.length < 2) {
-    return null;
-  }
-  const last = rows[rows.length - 1];
-  const previous = rows[rows.length - 2];
-  const change = last.close - previous.close;
-  const changePct = previous.close ? (change / previous.close) * 100 : 0;
+import {
+  FNO_STOCKS,
+  HTF_TIMEFRAMES,
+  INDEX_INSTRUMENTS,
+  LTF_TIMEFRAMES,
+  NIFTY50,
+  getDefaultDirections,
+  getUniverseLabel
+} from "./lib/constants.mjs";
+import {
+  buildSynthetic4H,
+  fetchMarketTape,
+  fetchNewsItems,
+  fetchNseSymbols,
+  fetchYahooCandles,
+  resolveMarketType
+} from "./lib/dataSources.mjs";
+import { detectDivergence } from "./lib/divergenceEngine.mjs";
+import { clamp, distanceToZone, round } from "./lib/helpers.mjs";
+import { buildLevels, scoreSetup } from "./lib/scoringEngine.mjs";
+import {
+  buildExplanation,
+  buildSignalRecord,
+  buildTrendAlignment,
+  buildWarnings,
+  classifySetup,
+  deriveSetupState
+} from "./lib/setupEngine.mjs";
+import { eligibleTriggerTimeframes, evaluateTrigger, pickBestTrigger } from "./lib/triggerEngine.mjs";
+import {
+  barsSinceLastZoneTouch,
+  buildTrendContext,
+  buildZones,
+  favorableZonePosition,
+  findNearestOpposingZone,
+  hasAdequateRoom
+} from "./lib/zoneEngine.mjs";
+
+/**
+ * @typedef {Object} ScanOptions
+ * @property {number} proximity
+ * @property {number} impulse
+ * @property {string[]} allowedDirections
+ * @property {string} universe
+ * @property {string} marketType
+ * @property {string} scalpMode
+ * @property {string} scalpStyle
+ * @property {number} pivotLength
+ * @property {number} minPivotSpacing
+ */
+
+function buildPreview(rows, zone, levels, trigger, divergence) {
+  const sample = rows.slice(-40);
   return {
-    symbol,
-    price: Number(last.close.toFixed(2)),
-    change: Number(change.toFixed(2)),
-    changePct: Number(changePct.toFixed(2))
+    timeframe: zone.timeframe,
+    candles: sample.map((row) => ({
+      at: row.datetime,
+      open: round(row.open),
+      high: round(row.high),
+      low: round(row.low),
+      close: round(row.close)
+    })),
+    zoneLow: round(zone.zoneLow),
+    zoneHigh: round(zone.zoneHigh),
+    invalidation: levels.invalidation,
+    target1: levels.target1,
+    markers: {
+      sweepAt: trigger?.sweep?.at || null,
+      confirmationAt: trigger?.confirmation?.at || null,
+      divergenceAt: divergence?.pivots?.price?.[1]?.at || null
+    }
   };
 }
 
-async function fetchMarketTape() {
-  const settled = await Promise.allSettled(
-    MARKET_TAPE_SYMBOLS.map(async (item) => {
-      const quote = await fetchYahooQuote(item.symbol);
-      return quote ? { name: item.name, ...quote } : null;
-    })
-  );
-
-  return settled
-    .filter((item) => item.status === "fulfilled" && item.value)
-    .map((item) => item.value);
+function timeframeAllowed(timeframeName, scalpMode) {
+  if (scalpMode === "only") {
+    return timeframeName === "1H";
+  }
+  if (scalpMode === "off") {
+    return timeframeName !== "1H";
+  }
+  return true;
 }
 
-function stripHtml(text) {
-  return text
-    .replace(/<!\[CDATA\[|\]\]>/g, "")
-    .replace(/<[^>]+>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+function buildSetupCandidate({
+  symbol,
+  displayName,
+  tvSymbol,
+  marketType,
+  timeframe,
+  rows,
+  zone,
+  currentPrice,
+  trigger,
+  divergence,
+  opposingZone,
+  generatedAt
+}) {
+  const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
+  const levels = buildLevels({ currentPrice, zone, opposingZone });
+  const invalidated = zone.direction === "bullish"
+    ? currentPrice < levels.invalidation
+    : currentPrice > levels.invalidation;
+  const trendContext = buildTrendContext(rows);
+  const trendAlignment = buildTrendAlignment({ direction: zone.direction, trendContext, zone });
+  const mode = timeframe.mode;
+  const setupType = classifySetup({ mode, zone, trigger, divergence });
+  const setupState = deriveSetupState({ insideZone, trigger, invalidated });
+  const score = scoreSetup({ zone, trigger, divergence, levels, trendAlignment });
+  const warnings = buildWarnings({ zone, divergence, levels, opposingZone, trigger });
+  const explanation = buildExplanation({ symbol, zone, trigger, divergence, levels, setupType, state: setupState });
+  const preview = buildPreview(rows, zone, levels, trigger, divergence);
+  const signal = buildSignalRecord({
+    symbol,
+    direction: zone.direction,
+    setupType,
+    score: score.total,
+    divergence,
+    levels,
+    generatedAt,
+    zone,
+    trigger,
+    marketType
+  });
 
-function parseRssItems(xml, limit = 6) {
-  const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)];
-  return items.slice(0, limit).map((item) => {
-    const block = item[1];
-    const title = stripHtml((block.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || "");
-    const link = stripHtml((block.match(/<link>([\s\S]*?)<\/link>/) || [])[1] || "");
-    const pubDate = stripHtml((block.match(/<pubDate>([\s\S]*?)<\/pubDate>/) || [])[1] || "");
-    return { title, link, pubDate };
-  }).filter((item) => item.title && item.link);
-}
-
-async function fetchNewsItems(symbols) {
-  const queries = ["Nifty 50 Indian stock market", ...symbols.slice(0, 4).map((symbol) => symbol.replace(".NS", ""))];
-  const settled = await Promise.allSettled(
-    queries.map(async (query) => {
-      const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query + " NSE OR India stocks")}&hl=en-IN&gl=IN&ceid=IN:en`;
-      const response = await fetch(url, {
-        headers: { "user-agent": "Mozilla/5.0" }
-      });
-      if (!response.ok) {
-        return [];
-      }
-      const xml = await response.text();
-      return parseRssItems(xml, 2).map((item) => ({ ...item, sourceQuery: query }));
-    })
-  );
-
-  return settled
-    .filter((item) => item.status === "fulfilled")
-    .flatMap((item) => item.value)
-    .slice(0, 8);
+  return {
+    symbol,
+    name: displayName,
+    tvSymbol,
+    marketType,
+    mode,
+    direction: zone.direction,
+    zoneType: zone.zoneType,
+    zoneTimeframe: zone.timeframe,
+    triggerTimeframe: trigger?.timeframe || "none",
+    setupType,
+    setupState,
+    currentPrice: round(currentPrice),
+    zoneLow: round(zone.zoneLow),
+    zoneHigh: round(zone.zoneHigh),
+    distancePct: round(distancePct),
+    insideZone,
+    timestamp: generatedAt,
+    formedAt: zone.formedAt,
+    freshness: zone.freshness,
+    currentRangeRatio: trendContext.currentRangeRatio,
+    zone,
+    trigger,
+    divergence,
+    levels,
+    score: score.total,
+    scoreBreakdown: score.breakdown,
+    strongestFactors: score.strongestFactors,
+    warnings,
+    explanation,
+    preview,
+    signal
+  };
 }
 
 async function scanInstrument(symbol, options = {}) {
@@ -594,38 +164,49 @@ async function scanInstrument(symbol, options = {}) {
     tvSymbol = `NSE:${symbol.replace(".NS", "")}`,
     proximity = 1,
     impulse = 1.5,
-    allowedDirections = ["bullish", "bearish"]
+    allowedDirections = ["bullish", "bearish"],
+    universe = "all",
+    scalpMode = "include",
+    scalpStyle = "conservative",
+    pivotLength = 3,
+    minPivotSpacing = 5,
+    generatedAt = new Date().toISOString()
   } = options;
 
-  const ltfRowsByName = {};
+  const marketType = options.marketType || resolveMarketType(symbol, universe);
+  const triggerRowsByName = {};
   await Promise.all(
     LTF_TIMEFRAMES.map(async (timeframe) => {
       let rows = await fetchYahooCandles(symbol, timeframe.interval, timeframe.range);
       if (timeframe.synthetic4h) {
         rows = buildSynthetic4H(rows);
       }
-      ltfRowsByName[timeframe.name] = rows;
+      triggerRowsByName[timeframe.name] = rows;
     })
   );
 
   const matches = [];
 
   for (const timeframe of HTF_TIMEFRAMES) {
+    if (!timeframeAllowed(timeframe.name, scalpMode)) {
+      continue;
+    }
+
     const rows = await fetchYahooCandles(symbol, timeframe.interval, timeframe.range);
     if (!rows.length) {
       continue;
     }
 
     const currentPrice = rows[rows.length - 1].close;
-    const currentRangeRatio = currentRangePositionRatio(rows, currentPrice);
-    const zones = findDemandSupplyZones(rows, timeframe.name, impulse);
-    const directionalZones = zones.filter((zone) => allowedDirections.includes(zone.direction));
+    const trendContext = buildTrendContext(rows);
+    const zones = buildZones(rows, timeframe.name, impulse).filter((zone) => allowedDirections.includes(zone.direction));
+    const triggerNames = eligibleTriggerTimeframes(timeframe.name, scalpStyle);
     let best = null;
 
-    directionalZones.forEach((zone) => {
+    zones.forEach((zone) => {
       const { distancePct, insideZone } = distanceToZone(currentPrice, zone.zoneLow, zone.zoneHigh);
       const touchAge = barsSinceLastZoneTouch(rows, zone);
-      const maxTouchAge = timeframe.name === "Weekly" ? 8 : 10;
+      const maxTouchAge = timeframe.name === "Weekly" ? 8 : timeframe.name === "1H" ? 12 : 10;
       if (!(insideZone === "yes" || distancePct <= proximity)) {
         return;
       }
@@ -635,76 +216,57 @@ async function scanInstrument(symbol, options = {}) {
       if (!favorableZonePosition(currentPrice, zone, zone.direction)) {
         return;
       }
-      if (zone.direction === "bullish" && currentRangeRatio > 0.74) {
+      if (zone.direction === "bullish" && trendContext.currentRangeRatio > (timeframe.name === "1H" ? 0.84 : 0.76)) {
         return;
       }
-      if (zone.direction === "bearish" && currentRangeRatio < 0.26) {
+      if (zone.direction === "bearish" && trendContext.currentRangeRatio < (timeframe.name === "1H" ? 0.16 : 0.24)) {
         return;
       }
 
       const opposingZone = findNearestOpposingZone(zones, currentPrice, zone.direction);
-      const roomPct = opposingZone
-        ? Number((
-          zone.direction === "bullish"
-            ? ((opposingZone.zoneLow - currentPrice) / currentPrice) * 100
-            : ((currentPrice - opposingZone.zoneHigh) / currentPrice) * 100
-        ).toFixed(2))
-        : null;
-      const hasOpposingRoom = hasAdequateRoom(zone, opposingZone, currentPrice);
-      if (!hasOpposingRoom) {
+      if (!hasAdequateRoom(zone, opposingZone, currentPrice)) {
         return;
       }
 
-      let triggerTimeframe = null;
-      let sweepConfirmed = false;
-      let confirmationCandle = false;
-      let sweepAt = null;
-
-      LTF_TIMEFRAMES.forEach((ltf) => {
-        const triggerRows = ltfRowsByName[ltf.name] || [];
-        if (!triggerRows.length) {
-          return;
-        }
-        const sweep = detectLowerTimeframeSweep(triggerRows, zone, zone.direction);
-        const confirmation = detectLowerTimeframeConfirmation(triggerRows, zone.direction, sweep.at);
-        if (sweep.confirmed && (!triggerTimeframe || ltf.weight > ({ "1H": 1.0, "4H": 1.3 }[triggerTimeframe] || 0))) {
-          triggerTimeframe = ltf.name;
-          sweepConfirmed = true;
-          confirmationCandle = confirmation;
-          sweepAt = sweep.at;
-        } else if (!triggerTimeframe && confirmation) {
-          confirmationCandle = true;
-        }
+      const divergence = detectDivergence(rows, zone.direction, timeframe.name, {
+        pivotLength,
+        minPivotSpacing
       });
 
-      const invalidated = invalidationHit(currentPrice, zone, zone.direction);
-      const candidate = {
-        symbol,
-        name: displayName,
-        tvSymbol,
-        timeframe: timeframe.name,
-        zoneTimeframe: timeframe.name,
-        triggerTimeframe: triggerTimeframe || "none",
-        direction: zone.direction,
-        currentPrice: Number(currentPrice.toFixed(2)),
-        zoneLow: Number(zone.zoneLow.toFixed(2)),
-        zoneHigh: Number(zone.zoneHigh.toFixed(2)),
-        distancePct: Number(distancePct.toFixed(2)),
-        insideZone,
-        formedAt: zone.formedAt,
-        currentRangeRatio: Number(currentRangeRatio.toFixed(2)),
-        retests: zone.retests || 0,
-        touchAge,
-        roomPct,
-        hasOpposingRoom,
-        sweepConfirmed,
-        sweepAt,
-        confirmationCandle,
-        invalidated
+      const triggerResults = triggerNames.map((name) => {
+        const triggerRows = triggerRowsByName[name] || [];
+        if (!triggerRows.length) {
+          return null;
+        }
+        return evaluateTrigger(triggerRows, zone, zone.direction, name, {
+          evaluationWindow: timeframe.name === "1H" ? 12 : 10,
+          lookback: timeframe.name === "1H" ? 16 : 18
+        });
+      });
+
+      const trigger = pickBestTrigger(triggerResults) || {
+        timeframe: "none",
+        sweep: { detected: false, at: null, barsAgo: null, level: null, strength: 0 },
+        bos: { detected: false, at: null, strength: 0 },
+        confirmation: { detected: false, at: null, candleType: null },
+        volume: { detected: false, ratio: null },
+        quality: 0
       };
 
-      candidate.setupState = deriveSetupState(candidate);
-      candidate.score = scoreCandidate(candidate);
+      const candidate = buildSetupCandidate({
+        symbol,
+        displayName,
+        tvSymbol,
+        marketType,
+        timeframe,
+        rows,
+        zone,
+        currentPrice,
+        trigger,
+        divergence,
+        opposingZone,
+        generatedAt
+      });
 
       if (!best || candidate.score > best.score || (candidate.score === best.score && candidate.distancePct < best.distancePct)) {
         best = candidate;
@@ -722,13 +284,13 @@ async function scanInstrument(symbol, options = {}) {
 async function scanUniverse(symbols, options = {}) {
   const allMatches = [];
   const batches = [];
-  for (let index = 0; index < symbols.length; index += 6) {
-    batches.push(symbols.slice(index, index + 6));
+  for (let index = 0; index < symbols.length; index += 5) {
+    batches.push(symbols.slice(index, index + 5));
   }
 
   for (const batch of batches) {
     const batchResults = await Promise.all(batch.map((symbol) => scanInstrument(symbol, options).catch(() => [])));
-    batchResults.forEach((instrumentMatches) => allMatches.push(...instrumentMatches));
+    batchResults.forEach((matches) => allMatches.push(...matches));
   }
 
   const grouped = new Map();
@@ -741,7 +303,7 @@ async function scanUniverse(symbols, options = {}) {
   return [...grouped.values()]
     .map((items) => {
       const matchedTimeframes = items.length;
-      const symbolScore = Number(items.reduce((sum, item) => sum + item.score, 0).toFixed(2));
+      const symbolScore = round(items.reduce((sum, item) => sum + item.score, 0));
       return items.map((item) => ({
         ...item,
         matchedTimeframes,
@@ -757,18 +319,59 @@ async function scanUniverse(symbols, options = {}) {
         "Near HTF Zone": 2,
         Invalidated: 1
       };
-      if ((rank[b.setupState] || 0) !== (rank[a.setupState] || 0)) return (rank[b.setupState] || 0) - (rank[a.setupState] || 0);
-      if (b.symbolScore !== a.symbolScore) return b.symbolScore - a.symbolScore;
+      if ((rank[b.setupState] || 0) !== (rank[a.setupState] || 0)) {
+        return (rank[b.setupState] || 0) - (rank[a.setupState] || 0);
+      }
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
       return a.distancePct - b.distancePct;
     });
 }
 
-function getUniverseLabel(universe) {
+function buildMarketOverview({ stocks, indices, marketTape }) {
+  const combined = [...stocks, ...indices];
+  const confirmedLongs = combined.filter((item) => item.direction === "bullish" && item.setupState === "LTF Confirmed").length;
+  const confirmedShorts = combined.filter((item) => item.direction === "bearish" && item.setupState === "LTF Confirmed").length;
+  const nearZoneWatchlist = combined.filter((item) => item.setupState === "At HTF Zone" || item.setupState === "Near HTF Zone").length;
+  const divergenceSetups = combined.filter((item) => item.divergence).length;
+  const scalpSetups = combined.filter((item) => item.mode === "Scalp").length;
+  const strongestSetup = combined.sort((a, b) => b.score - a.score)[0] || null;
+  const breadth = {
+    advancing: marketTape.filter((item) => Number(item.change) > 0).length,
+    declining: marketTape.filter((item) => Number(item.change) < 0).length
+  };
+  const bucketCounts = combined.reduce((accumulator, item) => {
+    const key = item.marketType || "Other";
+    accumulator[key] = (accumulator[key] || 0) + 1;
+    return accumulator;
+  }, {});
+
+  const nifty = marketTape.find((item) => item.name === "NIFTY 50");
+  const vix = marketTape.find((item) => item.name === "INDIA VIX");
+  const riskTone = nifty && vix
+    ? (nifty.changePct >= 0 && vix.changePct <= 0 ? "Risk-On" : "Mixed")
+    : "Mixed";
+
   return {
-    nifty50: "Nifty 50 Cash Watchlist",
-    fno: "Liquid F&O Long / Short",
-    all: "NSE Cash Universe"
-  }[universe] || "Custom";
+    confirmedLongs,
+    confirmedShorts,
+    nearZoneWatchlist,
+    divergenceSetups,
+    scalpSetups,
+    strongestSetup: strongestSetup
+      ? {
+        symbol: strongestSetup.symbol,
+        direction: strongestSetup.direction,
+        setupType: strongestSetup.setupType,
+        score: strongestSetup.score,
+        reason: strongestSetup.explanation.reasons[0]
+      }
+      : null,
+    breadth,
+    riskTone,
+    bucketCounts
+  };
 }
 
 export default async (request) => {
@@ -779,9 +382,14 @@ export default async (request) => {
     const proximity = Number(url.searchParams.get("proximity") || "1");
     const impulse = Number(url.searchParams.get("impulse") || "1.5");
     const minTimeframes = Number(url.searchParams.get("minTimeframes") || "1");
+    const scalpMode = url.searchParams.get("scalpMode") || "include";
+    const scalpStyle = url.searchParams.get("scalpStyle") || "conservative";
+    const pivotLength = Number(url.searchParams.get("pivotLength") || "3");
+    const minPivotSpacing = Number(url.searchParams.get("pivotSpacing") || "5");
+    const generatedAt = new Date().toISOString();
 
     const effectiveLimit = universe === "all" ? Math.min(requestedLimit, 150) : requestedLimit;
-    const stockDirections = universe === "fno" ? ["bullish", "bearish"] : ["bullish"];
+    const allowedDirections = getDefaultDirections(universe);
 
     let stockSymbols;
     if (universe === "all") {
@@ -795,41 +403,68 @@ export default async (request) => {
     const stocks = await scanUniverse(stockSymbols, {
       proximity,
       impulse,
-      allowedDirections: stockDirections
+      allowedDirections,
+      universe,
+      scalpMode,
+      scalpStyle,
+      pivotLength,
+      minPivotSpacing,
+      generatedAt
     });
-    const filteredStocks = stocks.filter((row) => row.matchedTimeframes >= minTimeframes);
+    const filteredStocks = stocks.filter((item) => item.matchedTimeframes >= minTimeframes);
 
     const indexResults = await Promise.all(
-      INDEX_INSTRUMENTS.map(async (indexInstrument) => {
-        const matches = await scanInstrument(indexInstrument.sourceSymbol, {
-          displayName: indexInstrument.name,
-          tvSymbol: indexInstrument.tvSymbol,
+      INDEX_INSTRUMENTS.map(async (instrument) => {
+        const matches = await scanInstrument(instrument.sourceSymbol, {
+          displayName: instrument.name,
+          tvSymbol: instrument.tvSymbol,
           proximity,
           impulse,
-          allowedDirections: ["bullish", "bearish"]
+          allowedDirections: ["bullish", "bearish"],
+          universe: "fno",
+          scalpMode,
+          scalpStyle,
+          pivotLength,
+          minPivotSpacing,
+          marketType: "Index",
+          generatedAt
         });
-        const best = matches.sort((a, b) => b.score - a.score)[0];
-        return best ? { ...best, sourceSymbol: indexInstrument.sourceSymbol } : null;
+        return matches.sort((a, b) => b.score - a.score)[0] || null;
       })
     );
 
+    const indices = indexResults.filter(Boolean);
     const marketTape = await fetchMarketTape();
     const news = await fetchNewsItems(filteredStocks.map((item) => item.symbol));
+    const marketOverview = buildMarketOverview({ stocks: filteredStocks, indices, marketTape });
+    const topSetups = filteredStocks.slice(0, 5).map((item) => ({
+      symbol: item.symbol,
+      direction: item.direction,
+      setupType: item.setupType,
+      score: item.score,
+      divergenceLabel: item.divergence?.label || null,
+      timeframeCombo: `${item.zoneTimeframe} / ${item.triggerTimeframe}`,
+      reason: item.explanation.reasons[0]
+    }));
 
     const note = universe === "all" && requestedLimit > effectiveLimit
       ? `Live NSE cash scans are capped at ${effectiveLimit} symbols on Netlify for stability.`
-      : "HTF demand and supply zones are defined on Daily/Weekly. Sweeps and confirms are searched on 1H/4H.";
+      : "Zones, divergence, BOS, sweeps, and trigger quality are now scored separately for explainability.";
 
     const payload = {
-      generatedAt: new Date().toISOString(),
+      generatedAt,
       stocks: filteredStocks,
-      indices: indexResults.filter(Boolean),
+      indices,
+      topSetups,
       marketTape,
+      marketOverview,
       news,
       meta: {
         scannedSymbols: stockSymbols.length,
-        sweepSignals: filteredStocks.filter((item) => item.sweepConfirmed).length,
-        confirmationSignals: filteredStocks.filter((item) => item.confirmationCandle).length,
+        sweepSignals: filteredStocks.filter((item) => item.trigger?.sweep?.detected).length,
+        confirmationSignals: filteredStocks.filter((item) => item.trigger?.confirmation?.detected).length,
+        divergenceSignals: filteredStocks.filter((item) => item.divergence).length,
+        scalpSignals: filteredStocks.filter((item) => item.mode === "Scalp").length,
         universe,
         universeLabel: getUniverseLabel(universe),
         note

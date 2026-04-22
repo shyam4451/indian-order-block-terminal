@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Indian Demand Zone Terminal</title>
+    <title>StratDefender India</title>
     <meta
       name="description"
-      content="Live Indian market scanner for fresh demand and supply zones with liquidity sweep and confirmation logic."
+      content="Premium Indian trading terminal for supply and demand zones, RSI divergence, swing setups, and lower-timeframe scalp triggers."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -19,35 +19,88 @@
   <body>
     <div class="page-shell">
       <header class="hero">
-        <div>
-          <p class="eyebrow">Indian Demand Zone Terminal</p>
-          <h1>Demand zones for cash. Demand and supply for F&amp;O and indices.</h1>
+        <div class="hero-copy-block">
+          <p class="eyebrow">StratDefender India</p>
+          <h1>Institutional structure, divergence, and intraday triggers in one terminal.</h1>
           <p class="hero-copy">
-            The scanner now focuses on fresh demand and supply zones built from swing structure and impulsive
-            departures, then liquidity sweep, then confirmation. RSI divergence is no longer used as a trade trigger.
+            Scan fresh Weekly, Daily, and 1H zones across Indian cash stocks, F&amp;O, and index futures. Every
+            setup now explains its zone quality, trigger logic, divergence, score breakdown, warnings, and forward-test
+            record fields.
           </p>
         </div>
         <div class="hero-card">
-          <p class="section-label">Scan Logic</p>
+          <p class="section-label">Active Rule Stack</p>
           <ul class="hero-list">
-            <li>Cash universes show bullish demand-zone setups only.</li>
-            <li>F&amp;O stocks and indices can show both long and short setups.</li>
-            <li>`Sweep` means price took liquidity and closed back in favor of the setup.</li>
-            <li>`Confirm` means the latest candle followed through after the sweep/zone reaction.</li>
+            <li>Cash stocks default to long-only demand logic.</li>
+            <li>F&amp;O and indices scan both demand-long and supply-short setups.</li>
+            <li>Weekly and Daily power swing setups. 1H powers scalp mode.</li>
+            <li>15M and 5M refine intraday entries. 1H and 4H refine swing entries.</li>
+            <li>RSI divergence is scored as confluence, never treated as blind precision.</li>
           </ul>
         </div>
       </header>
 
-      <section class="controls card">
+      <section class="overview-grid">
+        <article class="metric card">
+          <span>Confirmed Longs</span>
+          <strong id="metricConfirmedLongs">-</strong>
+        </article>
+        <article class="metric card">
+          <span>Confirmed Shorts</span>
+          <strong id="metricConfirmedShorts">-</strong>
+        </article>
+        <article class="metric card">
+          <span>Near-Zone Watchlist</span>
+          <strong id="metricWatchlist">-</strong>
+        </article>
+        <article class="metric card">
+          <span>Divergence Setups</span>
+          <strong id="metricDivergences">-</strong>
+        </article>
+        <article class="metric card">
+          <span>1H Scalps</span>
+          <strong id="metricScalps">-</strong>
+        </article>
+        <article class="metric card">
+          <span>Strongest Setup</span>
+          <strong id="metricStrongest">-</strong>
+          <small id="metricStrongestMeta">Waiting for scan</small>
+        </article>
+        <article class="metric card">
+          <span>Last Scan</span>
+          <strong id="metricLastScan">-</strong>
+          <small id="scanMeta">No scan yet.</small>
+        </article>
+      </section>
+
+      <section class="featured card">
+        <div class="section-head">
+          <div>
+            <p class="section-label">Top Setups</p>
+            <h2>Fast decision strip</h2>
+          </div>
+          <div class="legend">
+            <span class="pill bullish">Demand Long</span>
+            <span class="pill bearish">Supply Short</span>
+            <span class="pill info">1H Scalp</span>
+            <span class="pill subtle">RSI Divergence</span>
+          </div>
+        </div>
+        <div id="featuredStrip" class="featured-strip">
+          <div class="empty-state">Run a scan to feature the strongest live setups.</div>
+        </div>
+      </section>
+
+      <section class="controls card sticky-panel">
         <div class="controls-head">
           <div>
             <p class="section-label">Scanner Controls</p>
-            <h2>Run live scan</h2>
+            <h2>Universe and engine settings</h2>
           </div>
           <button id="scanButton" class="primary-button">Run Scan</button>
         </div>
 
-        <div class="controls-grid">
+        <div class="controls-grid scan-grid">
           <label class="control">
             <span>Universe</span>
             <select id="universe">
@@ -72,9 +125,111 @@
             <span>Min matching timeframes</span>
             <input id="minTimeframes" type="number" min="1" max="3" value="1" />
           </label>
+          <label class="control">
+            <span>Scalp mode</span>
+            <select id="scalpMode">
+              <option value="include">Include 1H scalps</option>
+              <option value="off">Swing only</option>
+              <option value="only">Scalp only</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Scalp style</span>
+            <select id="scalpStyle">
+              <option value="conservative">Conservative</option>
+              <option value="aggressive">Aggressive</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>RSI pivot length</span>
+            <input id="pivotLength" type="number" min="2" max="8" value="3" />
+          </label>
         </div>
 
-        <p id="scanMeta" class="meta-text">No scan yet.</p>
+        <div class="preset-row" id="presetBar">
+          <button class="preset-button" data-preset="swing">Swing Reversals</button>
+          <button class="preset-button" data-preset="divergence">Divergence Setups</button>
+          <button class="preset-button" data-preset="scalp">Intraday Scalps</button>
+          <button class="preset-button" data-preset="score">High Score Only</button>
+          <button class="preset-button" data-preset="confirmed">Confirmed Setups Only</button>
+        </div>
+
+        <div class="controls-grid filter-grid">
+          <label class="control">
+            <span>Direction</span>
+            <select id="directionFilter">
+              <option value="all">All</option>
+              <option value="bullish">Long only</option>
+              <option value="bearish">Short only</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Setup type</span>
+            <select id="setupTypeFilter">
+              <option value="all">All setup types</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Zone timeframe</span>
+            <select id="zoneTfFilter">
+              <option value="all">All</option>
+              <option value="1H">1H</option>
+              <option value="Daily">Daily</option>
+              <option value="Weekly">Weekly</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Trigger timeframe</span>
+            <select id="triggerTfFilter">
+              <option value="all">All</option>
+              <option value="5M">5M</option>
+              <option value="15M">15M</option>
+              <option value="1H">1H</option>
+              <option value="4H">4H</option>
+              <option value="none">No trigger yet</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Min score</span>
+            <input id="minScoreFilter" type="number" min="0" max="100" value="0" />
+          </label>
+          <label class="control">
+            <span>Max distance (%)</span>
+            <input id="maxDistanceFilter" type="number" min="0" max="10" step="0.1" value="10" />
+          </label>
+          <label class="control">
+            <span>Divergence required</span>
+            <select id="divergenceFilter">
+              <option value="all">No</option>
+              <option value="required">Yes</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Confirmed only</span>
+            <select id="confirmedFilter">
+              <option value="all">No</option>
+              <option value="required">Yes</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Mode</span>
+            <select id="modeFilter">
+              <option value="all">All</option>
+              <option value="Scalp">Scalp only</option>
+              <option value="Swing">Swing only</option>
+            </select>
+          </label>
+          <label class="control">
+            <span>Sort by</span>
+            <select id="sortFilter">
+              <option value="score">Total score</option>
+              <option value="divergence">Divergence strength</option>
+              <option value="freshness">Freshness</option>
+              <option value="scalp">Scalp score</option>
+              <option value="distance">Distance</option>
+            </select>
+          </label>
+        </div>
       </section>
 
       <section class="tape-row" id="marketTape">
@@ -84,76 +239,62 @@
         </article>
       </section>
 
-      <section class="metrics">
-        <article class="metric card">
-          <span>Scanned</span>
-          <strong id="metricScanned">-</strong>
-        </article>
-        <article class="metric card">
-          <span>Matches</span>
-          <strong id="metricMatches">-</strong>
-        </article>
-        <article class="metric card">
-          <span>Sweeps</span>
-          <strong id="metricSweeps">-</strong>
-        </article>
-        <article class="metric card">
-          <span>Confirmed</span>
-          <strong id="metricConfirmed">-</strong>
-        </article>
-      </section>
-
       <main class="layout">
-        <section class="card table-card">
-          <div class="section-head">
-            <div>
-              <p class="section-label">Scanner Board</p>
-              <h2>Live setups</h2>
+        <section class="main-column">
+          <section class="card table-card">
+            <div class="section-head">
+              <div>
+                <p class="section-label">Scanner Matrix</p>
+                <h2>Actionable setup board</h2>
+              </div>
+              <div class="table-summary" id="tableSummary">Waiting for scan.</div>
             </div>
-            <div class="legend">
-              <span class="pill bullish">Demand Long</span>
-              <span class="pill bearish">Supply Short</span>
-              <span class="pill neutral">Sweep</span>
-              <span class="pill subtle">Confirm</span>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th>Setup</th>
+                    <th>Timeframes</th>
+                    <th>Confluence</th>
+                    <th>Levels</th>
+                    <th>Score</th>
+                    <th>Warnings</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="stocksBody">
+                  <tr>
+                    <td colspan="8" class="empty-state">Run a scan to load live setups.</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Symbol</th>
-                  <th>HTF Zone</th>
-                  <th>LTF Trigger</th>
-                  <th>Setup</th>
-                  <th>State</th>
-                  <th>Price</th>
-                  <th>Zone</th>
-                  <th>Distance</th>
-                  <th>Sweep</th>
-                  <th>Confirm</th>
-                  <th>Score</th>
-                  <th>Chart</th>
-                </tr>
-              </thead>
-              <tbody id="stocksBody">
-                <tr>
-                  <td colspan="12" class="empty-state">Run a scan to load setups.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          </section>
+
+          <section class="card inspector-card">
+            <div class="section-head">
+              <div>
+                <p class="section-label">Setup Inspector</p>
+                <h2>Why this setup exists</h2>
+              </div>
+            </div>
+            <div id="setupInspector" class="inspector-empty">
+              Select a setup row to inspect its score breakdown, trigger logic, divergence pivots, levels, and journal fields.
+            </div>
+          </section>
         </section>
 
         <aside class="sidebar">
           <section class="card">
             <div class="section-head">
               <div>
-                <p class="section-label">News Flow</p>
-                <h2>Market and board news</h2>
+                <p class="section-label">Market Overview</p>
+                <h2>Risk and breadth</h2>
               </div>
             </div>
-            <div id="newsFeed" class="news-list">
-              <div class="empty-state">News will appear after the scan.</div>
+            <div id="marketOverview" class="overview-list">
+              <div class="empty-state">Overview will load after the scan.</div>
             </div>
           </section>
 
@@ -161,7 +302,7 @@
             <div class="section-head">
               <div>
                 <p class="section-label">Index Desk</p>
-                <h2>Index futures</h2>
+                <h2>Index futures structure</h2>
               </div>
             </div>
             <div id="indicesGrid" class="index-list">
@@ -169,22 +310,23 @@
             </div>
           </section>
 
-          <section class="card note-card">
-            <p class="section-label">Important</p>
-            <h2>How to use this version</h2>
-            <ul class="hero-list">
-              <li>Cash stocks are scanned only for bullish demand-zone opportunities.</li>
-              <li>Short setups are limited to F&amp;O stocks and indices.</li>
-              <li>Daily and Weekly define the zone. `1H / 4H` decide whether the trigger has actually shown up.</li>
-              <li>Use the chart link to verify the HTF zone and the LTF sweep before taking any trade.</li>
-            </ul>
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <p class="section-label">News Flow</p>
+                <h2>Stocks in focus</h2>
+              </div>
+            </div>
+            <div id="newsFeed" class="news-list">
+              <div class="empty-state">News will appear after the scan.</div>
+            </div>
           </section>
 
           <section class="card note-card">
             <div class="section-head">
               <div>
                 <p class="section-label">Journal</p>
-                <h2>Taken setups</h2>
+                <h2>Forward-test log</h2>
               </div>
             </div>
             <div id="journalList" class="journal-list">
