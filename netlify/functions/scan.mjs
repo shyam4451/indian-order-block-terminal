@@ -174,25 +174,51 @@ async function scanInstrument(symbol, options = {}) {
   } = options;
 
   const marketType = options.marketType || resolveMarketType(symbol, universe);
+  const enabledHtfTimeframes = HTF_TIMEFRAMES.filter((timeframe) => timeframeAllowed(timeframe.name, scalpMode));
+  const requiredTriggerNames = [...new Set(
+    enabledHtfTimeframes.flatMap((timeframe) => eligibleTriggerTimeframes(timeframe.name, scalpStyle))
+  )];
+  const rowCache = new Map();
+  const rawIntradayCache = new Map();
+
+  async function getRows(timeframe) {
+    if (rowCache.has(timeframe.name)) {
+      return rowCache.get(timeframe.name);
+    }
+
+    let rows;
+    if (timeframe.synthetic4h) {
+      const rawKey = `${timeframe.interval}:${timeframe.range}`;
+      let rawRows = rawIntradayCache.get(rawKey);
+      if (!rawRows) {
+        rawRows = await fetchYahooCandles(symbol, timeframe.interval, timeframe.range);
+        rawIntradayCache.set(rawKey, rawRows);
+      }
+      rows = buildSynthetic4H(rawRows);
+    } else {
+      const cacheKey = `${timeframe.interval}:${timeframe.range}:${timeframe.name}`;
+      if (rowCache.has(cacheKey)) {
+        return rowCache.get(cacheKey);
+      }
+      rows = await fetchYahooCandles(symbol, timeframe.interval, timeframe.range);
+      rowCache.set(cacheKey, rows);
+    }
+
+    rowCache.set(timeframe.name, rows);
+    return rows;
+  }
+
   const triggerRowsByName = {};
   await Promise.all(
-    LTF_TIMEFRAMES.map(async (timeframe) => {
-      let rows = await fetchYahooCandles(symbol, timeframe.interval, timeframe.range);
-      if (timeframe.synthetic4h) {
-        rows = buildSynthetic4H(rows);
-      }
-      triggerRowsByName[timeframe.name] = rows;
+    LTF_TIMEFRAMES.filter((timeframe) => requiredTriggerNames.includes(timeframe.name)).map(async (timeframe) => {
+      triggerRowsByName[timeframe.name] = await getRows(timeframe);
     })
   );
 
   const matches = [];
 
-  for (const timeframe of HTF_TIMEFRAMES) {
-    if (!timeframeAllowed(timeframe.name, scalpMode)) {
-      continue;
-    }
-
-    const rows = await fetchYahooCandles(symbol, timeframe.interval, timeframe.range);
+  for (const timeframe of enabledHtfTimeframes) {
+    const rows = await getRows(timeframe);
     if (!rows.length) {
       continue;
     }
@@ -284,8 +310,8 @@ async function scanInstrument(symbol, options = {}) {
 async function scanUniverse(symbols, options = {}) {
   const allMatches = [];
   const batches = [];
-  for (let index = 0; index < symbols.length; index += 5) {
-    batches.push(symbols.slice(index, index + 5));
+  for (let index = 0; index < symbols.length; index += 4) {
+    batches.push(symbols.slice(index, index + 4));
   }
 
   for (const batch of batches) {
@@ -428,7 +454,7 @@ export default async (request) => {
           minPivotSpacing,
           marketType: "Index",
           generatedAt
-        });
+        }).catch(() => []);
         return matches.sort((a, b) => b.score - a.score)[0] || null;
       })
     );
