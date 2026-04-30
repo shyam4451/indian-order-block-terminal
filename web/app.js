@@ -24,7 +24,8 @@ const elements = {
   tableSummary: document.getElementById("tableSummary"),
   signalRows: document.getElementById("signalRows"),
   detailPanel: document.getElementById("detailPanel"),
-  telegramSummary: document.getElementById("telegramSummary")
+  telegramSummary: document.getElementById("telegramSummary"),
+  diagnosticSummary: document.getElementById("diagnosticSummary")
 };
 
 const state = {
@@ -66,16 +67,28 @@ function formatTime(value) {
 }
 
 function pillClass(type) {
-  if (type === "LONG" || type === "bullish" || type === "Bullish" || type === "Prime" || type === "sent") {
+  const normalized = String(type || "").toLowerCase();
+  if (
+    normalized === "long" ||
+    normalized === "bullish" ||
+    normalized.includes("bullish") ||
+    normalized === "prime" ||
+    normalized === "sent"
+  ) {
     return "accent";
   }
-  if (type === "SHORT" || type === "Bearish" || type === "failed") {
+  if (
+    normalized === "short" ||
+    normalized === "bearish" ||
+    normalized.includes("bearish") ||
+    normalized === "failed"
+  ) {
     return "danger";
   }
-  if (type === "suppressed") {
+  if (normalized === "suppressed") {
     return "warning";
   }
-  if (type === "High" || type === "configured") {
+  if (normalized === "high" || normalized === "configured") {
     return "info";
   }
   return "subtle";
@@ -272,9 +285,18 @@ function renderTable() {
   elements.tableSummary.textContent = `${state.visibleSignals.length} visible from ${allSignals.length} qualified signals.`;
 
   if (!state.visibleSignals.length) {
+    const diagnostics = state.payload?.diagnostics;
+    const errors = state.payload?.errors || [];
+    const reason = errors.length === state.payload?.symbolsScanned
+      ? "The upstream market source failed for every scanned symbol."
+      : state.payload?.meta?.note || "No signals qualified.";
     elements.signalRows.innerHTML = `
       <tr>
-        <td colspan="8" class="empty-state">No signals matched the current filters.</td>
+        <td colspan="8" class="empty-state">
+          No signals matched the current filters.
+          <div class="empty-copy">${reason}</div>
+          ${diagnostics ? `<div class="empty-copy">Setup checks: ${diagnostics.setupChecks} | No UO divergence: ${diagnostics.divergenceMisses} | RSI filter rejects: ${diagnostics.filterMisses}</div>` : ""}
+        </td>
       </tr>
     `;
     return;
@@ -326,10 +348,6 @@ function detailMarkup(signal) {
         <div class="info-row">
           <strong>UO pivots</strong>
           <span>${formatNumber(divergence?.pivots?.uo?.[0]?.value)} -> ${formatNumber(divergence?.pivots?.uo?.[1]?.value)}</span>
-        </div>
-        <div class="info-row">
-          <strong>RSI pivots</strong>
-          <span>${formatNumber(divergence?.pivots?.rsi?.[0]?.value)} -> ${formatNumber(divergence?.pivots?.rsi?.[1]?.value)}</span>
         </div>
         <div class="info-row">
           <strong>Pivot window</strong>
@@ -411,6 +429,45 @@ function renderTelegram(payload) {
   `;
 }
 
+function renderDiagnostics(payload) {
+  const diagnostics = payload?.diagnostics;
+  const errors = payload?.errors || [];
+  if (!diagnostics) {
+    elements.diagnosticSummary.innerHTML = '<div class="empty-state compact">No diagnostics available.</div>';
+    return;
+  }
+
+  const previewErrors = errors.slice(0, 4);
+  elements.diagnosticSummary.innerHTML = `
+    <div class="info-row">
+      <strong>Setup checks</strong>
+      <span>${formatCompact(diagnostics.setupChecks)}</span>
+    </div>
+    <div class="info-row">
+      <strong>No UO divergence</strong>
+      <span>${formatCompact(diagnostics.divergenceMisses)}</span>
+    </div>
+    <div class="info-row">
+      <strong>RSI filter rejects</strong>
+      <span>${formatCompact(diagnostics.filterMisses)}</span>
+    </div>
+    <div class="info-row">
+      <strong>Qualified setups</strong>
+      <span>${formatCompact(diagnostics.qualified)}</span>
+    </div>
+    <div class="info-row">
+      <strong>Symbol fetch failures</strong>
+      <span>${formatCompact(payload.symbolsFailed || 0)}</span>
+    </div>
+    ${previewErrors.map((item) => `
+      <div class="info-row">
+        <strong>${item.symbol}</strong>
+        <span>${item.error}</span>
+      </div>
+    `).join("")}
+  `;
+}
+
 function renderAll() {
   if (!state.payload) {
     return;
@@ -422,6 +479,7 @@ function renderAll() {
   renderTopSignals(state.visibleSignals);
   renderDetail();
   renderTelegram(state.payload);
+  renderDiagnostics(state.payload);
 }
 
 function setStatus(label, tone, meta) {
@@ -466,6 +524,7 @@ async function runScan() {
     elements.topSignals.innerHTML = '<div class="empty-state">Could not load ranked signals.</div>';
     elements.detailPanel.innerHTML = '<div class="empty-state">Could not load signal detail.</div>';
     elements.telegramSummary.innerHTML = '<div class="empty-state compact">Telegram status unavailable.</div>';
+    elements.diagnosticSummary.innerHTML = '<div class="empty-state compact">Diagnostics unavailable.</div>';
   } finally {
     elements.scanButton.disabled = false;
   }

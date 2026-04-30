@@ -6,7 +6,7 @@
     <title>UO Divergence Radar</title>
     <meta
       name="description"
-      content="Premium multi-timeframe stock scanner for Ultimate Oscillator divergence with RSI filters and Telegram alerts."
+      content="Premium multi-timeframe stock scanner for regular and hidden Ultimate Oscillator divergence with RSI context filters and Telegram alerts."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -23,7 +23,7 @@
           <p class="eyebrow">UO Divergence Radar</p>
           <h1>High-probability multi-timeframe divergence scanning built around Ultimate Oscillator first.</h1>
           <p class="hero-text">
-            The trigger is always UO divergence on the entry timeframe. RSI only filters the entry context and the
+            The trigger is always regular or hidden UO divergence on the entry timeframe. RSI only filters the entry context and the
             higher-timeframe bias. Every result is ranked, deduplicated for Telegram, and packaged for fast decision-making.
           </p>
           <div class="hero-tags">
@@ -48,7 +48,7 @@
               <span>1D bias -> 4H entry</span>
             </article>
           </div>
-          <small class="hero-note">No RSI divergence logic. No support/resistance logic. UO divergence stays the only trigger.</small>
+          <small class="hero-note">No RSI divergence logic. Regular and hidden UO divergence stay the only trigger.</small>
         </div>
       </header>
 
@@ -240,6 +240,18 @@
             </div>
             <div id="telegramSummary" class="stack-list">
               <div class="empty-state compact">Telegram status will appear after the scan.</div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <p class="section-label">Diagnostics</p>
+                <h2>Why signals did or did not appear</h2>
+              </div>
+            </div>
+            <div id="diagnosticSummary" class="stack-list">
+              <div class="empty-state compact">Scan diagnostics will appear after the first run.</div>
             </div>
           </section>
 

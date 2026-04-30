@@ -173,7 +173,7 @@ function detectDirectionalDivergence(rows, direction, windows = DEFAULT_PIVOT_WI
 
   const closes = rows.map((row) => row.close);
   const lows = rows.map((row) => row.low);
-  const rsiSeries = computeRsi(closes);
+  const highs = rows.map((row) => row.high);
   const uoSeries = computeUltimateOscillator(rows);
   const candidates = [];
   const bullish = direction === "LONG";
@@ -199,13 +199,6 @@ function detectDirectionalDivergence(rows, direction, windows = DEFAULT_PIVOT_WI
 
       const priceA = priceSeries[first];
       const priceB = priceSeries[second];
-      const priceValid = bullish ? priceB < priceA : priceB > priceA;
-      const oscillatorValid = bullish ? uoB > uoA : uoB < uoA;
-
-      if (!priceValid || !oscillatorValid) {
-        continue;
-      }
-
       const priceMovePct = Math.abs((priceB - priceA) / Math.max(Math.abs(priceA), 0.01)) * 100;
       const oscillatorMove = Math.abs(uoB - uoA);
       const priceSlope = ((priceB - priceA) / Math.max(Math.abs(priceA), 0.01)) / Math.max(spacing, 1);
@@ -213,29 +206,66 @@ function detectDirectionalDivergence(rows, direction, windows = DEFAULT_PIVOT_WI
       const slopeDifference = Math.abs(priceSlope * 100) + Math.abs(oscillatorSlope);
       const strength = buildDivergenceStrength(priceMovePct, oscillatorMove, spacing, slopeDifference, ageBars);
 
-      candidates.push({
-        direction,
-        divergence: bullish ? "Bullish" : "Bearish",
-        pricePattern: bullish ? "LL" : "HH",
-        oscillatorPattern: bullish ? "HL" : "LH",
-        strength,
-        slopeDifference: round(slopeDifference, 2),
-        ageBars,
-        window,
-        pivots: {
-          price: [
-            { at: rows[first].datetime, value: round(priceA) },
-            { at: rows[second].datetime, value: round(priceB) }
-          ],
-          uo: [
-            { at: rows[first].datetime, value: round(uoA) },
-            { at: rows[second].datetime, value: round(uoB) }
-          ],
-          rsi: [
-            { at: rows[first].datetime, value: round(rsiSeries[first]) },
-            { at: rows[second].datetime, value: round(rsiSeries[second]) }
-          ]
+      const divergenceKinds = bullish
+        ? [
+          {
+            valid: priceB < priceA && uoB > uoA,
+            label: "Bullish UO",
+            pricePattern: "LL",
+            oscillatorPattern: "HL",
+            hidden: false
+          },
+          {
+            valid: priceB > priceA && uoB < uoA,
+            label: "Hidden Bullish UO",
+            pricePattern: "HL",
+            oscillatorPattern: "LL",
+            hidden: true
+          }
+        ]
+        : [
+          {
+            valid: priceB > priceA && uoB < uoA,
+            label: "Bearish UO",
+            pricePattern: "HH",
+            oscillatorPattern: "LH",
+            hidden: false
+          },
+          {
+            valid: priceB < priceA && uoB > uoA,
+            label: "Hidden Bearish UO",
+            pricePattern: "LH",
+            oscillatorPattern: "HH",
+            hidden: true
+          }
+        ];
+
+      divergenceKinds.forEach((kind) => {
+        if (!kind.valid) {
+          return;
         }
+
+        candidates.push({
+          direction,
+          divergence: kind.label,
+          pricePattern: kind.pricePattern,
+          oscillatorPattern: kind.oscillatorPattern,
+          strength,
+          slopeDifference: round(slopeDifference, 2),
+          ageBars,
+          window,
+          hidden: kind.hidden,
+          pivots: {
+            price: [
+              { at: rows[first].datetime, value: round(priceA) },
+              { at: rows[second].datetime, value: round(priceB) }
+            ],
+            uo: [
+              { at: rows[first].datetime, value: round(uoA) },
+              { at: rows[second].datetime, value: round(uoB) }
+            ]
+          }
+        });
       });
     }
   });
@@ -283,9 +313,14 @@ function buildSetupSummary(signal) {
 }
 
 function buildRationale(signal) {
-  const priceLine = signal.signal === "LONG"
-    ? `Price made a lower low while UO made a higher low on ${signal.entryTimeframe}.`
-    : `Price made a higher high while UO made a lower high on ${signal.entryTimeframe}.`;
+  const hidden = signal.divergence.toLowerCase().includes("hidden");
+  const priceLine = hidden
+    ? (signal.signal === "LONG"
+      ? `Price made a higher low while UO made a lower low on ${signal.entryTimeframe}.`
+      : `Price made a lower high while UO made a higher high on ${signal.entryTimeframe}.`)
+    : (signal.signal === "LONG"
+      ? `Price made a lower low while UO made a higher low on ${signal.entryTimeframe}.`
+      : `Price made a higher high while UO made a lower high on ${signal.entryTimeframe}.`);
   const biasLine = signal.signal === "LONG"
     ? `${signal.biasTimeframe} RSI is above 50, supporting long bias.`
     : `${signal.biasTimeframe} RSI is below 50, supporting short bias.`;
@@ -494,12 +529,20 @@ async function resolveSymbols(universe, limit, customSymbols) {
 
 function evaluateSetupsForSymbol(rawSymbol, seriesByTimeframe) {
   const signals = [];
+  const diagnostics = {
+    setupChecks: 0,
+    divergenceMisses: 0,
+    filterMisses: 0,
+    qualified: 0
+  };
 
   SETUPS.forEach((setup) => {
+    diagnostics.setupChecks += 1;
     const entryRows = seriesByTimeframe[setup.entryTf];
     const biasRows = seriesByTimeframe[setup.biasTf];
 
     if (!entryRows?.length || !biasRows?.length) {
+      diagnostics.divergenceMisses += 1;
       return;
     }
 
@@ -512,18 +555,25 @@ function evaluateSetupsForSymbol(rawSymbol, seriesByTimeframe) {
     const volumeRatio = computeVolumeRatio(entryRows);
 
     if (!Number.isFinite(entryRsi) || !Number.isFinite(entryUo) || !Number.isFinite(biasRsi)) {
+      diagnostics.divergenceMisses += 1;
       return;
     }
+
+    let setupQualified = false;
+    let setupSawDivergence = false;
 
     ["LONG", "SHORT"].forEach((direction) => {
       const divergence = detectDirectionalDivergence(entryRows, direction);
       if (!divergence) {
         return;
       }
+      setupSawDivergence = true;
       if (!qualifyRsiFilter(direction, entryRsi, biasRsi)) {
+        diagnostics.filterMisses += 1;
         return;
       }
 
+      setupQualified = true;
       signals.push(buildSignal({
         rawSymbol,
         setup,
@@ -535,9 +585,16 @@ function evaluateSetupsForSymbol(rawSymbol, seriesByTimeframe) {
         volumeRatio
       }));
     });
+
+    if (!setupQualified && !setupSawDivergence) {
+      diagnostics.divergenceMisses += 1;
+    }
+    if (setupQualified) {
+      diagnostics.qualified += 1;
+    }
   });
 
-  return signals;
+  return { signals, diagnostics };
 }
 
 function summarizeSignals(signals, telegramSummary) {
@@ -580,15 +637,23 @@ export async function runUoMultiTimeframeScan(query = {}, env = process.env) {
   const settled = await mapWithConcurrency(symbols, concurrency, async (rawSymbol) => {
     try {
       const seriesByTimeframe = await getSymbolSeries(rawSymbol);
+      const evaluation = evaluateSetupsForSymbol(rawSymbol, seriesByTimeframe);
       return {
         rawSymbol,
-        signals: evaluateSetupsForSymbol(rawSymbol, seriesByTimeframe)
+        signals: evaluation.signals,
+        diagnostics: evaluation.diagnostics
       };
     } catch (error) {
       return {
         rawSymbol,
         error: error.message,
-        signals: []
+        signals: [],
+        diagnostics: {
+          setupChecks: SETUPS.length,
+          divergenceMisses: 0,
+          filterMisses: 0,
+          qualified: 0
+        }
       };
     }
   });
@@ -609,6 +674,19 @@ export async function runUoMultiTimeframeScan(query = {}, env = process.env) {
       }
       return left.symbol.localeCompare(right.symbol);
     });
+
+  const diagnostics = settled.reduce((accumulator, item) => {
+    accumulator.setupChecks += item.diagnostics?.setupChecks || 0;
+    accumulator.divergenceMisses += item.diagnostics?.divergenceMisses || 0;
+    accumulator.filterMisses += item.diagnostics?.filterMisses || 0;
+    accumulator.qualified += item.diagnostics?.qualified || 0;
+    return accumulator;
+  }, {
+    setupChecks: 0,
+    divergenceMisses: 0,
+    filterMisses: 0,
+    qualified: 0
+  });
 
   const telegramSummary = {
     configured: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID),
@@ -651,6 +729,13 @@ export async function runUoMultiTimeframeScan(query = {}, env = process.env) {
 
   const marketTape = await fetchMarketTape().catch(() => []);
   const summary = summarizeSignals(signals, telegramSummary);
+  const allFetchesFailed = symbols.length > 0 && errors.length === symbols.length;
+  const noSignals = signals.length === 0;
+  const note = allFetchesFailed
+    ? "No symbols could be fetched from the upstream market source. This is a data-source problem, not a filter problem."
+    : noSignals
+      ? `No fully qualified signals. ${diagnostics.divergenceMisses} setup checks had no UO divergence and ${diagnostics.filterMisses} divergence checks failed the RSI bias filters.`
+      : "UO divergence drives every signal. RSI only filters direction and higher-timeframe bias.";
 
   return {
     generatedAt: new Date().toISOString(),
@@ -665,6 +750,7 @@ export async function runUoMultiTimeframeScan(query = {}, env = process.env) {
       entryTimeframe: setup.entryTf
     })),
     summary,
+    diagnostics,
     telegram: telegramSummary,
     marketTape,
     signals,
@@ -672,8 +758,8 @@ export async function runUoMultiTimeframeScan(query = {}, env = process.env) {
     errors,
     meta: {
       note: telegramSummary.configured
-        ? "UO divergence drives every signal. RSI only filters direction and higher-timeframe bias."
-        : "Telegram alerts are disabled until TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are configured."
+        ? note
+        : `${note} Telegram alerts are disabled until TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are configured.`
     }
   };
 }
