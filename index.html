@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>StratDefender India</title>
+    <title>UO Divergence Radar</title>
     <meta
       name="description"
-      content="Premium Indian trading terminal for supply and demand zones, RSI divergence, swing setups, and lower-timeframe scalp triggers."
+      content="Premium multi-timeframe stock scanner for Ultimate Oscillator divergence with RSI filters and Telegram alerts."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -17,318 +17,256 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="page-shell">
-      <header class="hero">
-        <div class="hero-copy-block">
-          <p class="eyebrow">StratDefender India</p>
-          <h1>Institutional structure, divergence, and intraday triggers in one terminal.</h1>
-          <p class="hero-copy">
-            Scan fresh Weekly, Daily, and 1H zones across Indian cash stocks, F&amp;O, and index futures. Every
-            setup now explains its zone quality, trigger logic, divergence, score breakdown, warnings, and forward-test
-            record fields.
+    <div class="app-shell">
+      <header class="hero card">
+        <div class="hero-copy">
+          <p class="eyebrow">UO Divergence Radar</p>
+          <h1>High-probability multi-timeframe divergence scanning built around Ultimate Oscillator first.</h1>
+          <p class="hero-text">
+            The trigger is always UO divergence on the entry timeframe. RSI only filters the entry context and the
+            higher-timeframe bias. Every result is ranked, deduplicated for Telegram, and packaged for fast decision-making.
           </p>
+          <div class="hero-tags">
+            <span class="pill accent">UO 7 / 14 / 28</span>
+            <span class="pill subtle">RSI 14 filter only</span>
+            <span class="pill info">Telegram alerts</span>
+          </div>
         </div>
-        <div class="hero-card">
-          <p class="section-label">Active Rule Stack</p>
-          <ul class="hero-list">
-            <li>Cash stocks default to long-only demand logic.</li>
-            <li>F&amp;O and indices scan both demand-long and supply-short setups.</li>
-            <li>Weekly and Daily power swing setups. 1H powers scalp mode.</li>
-            <li>15M and 5M refine intraday entries. 1H and 4H refine swing entries.</li>
-            <li>RSI divergence is scored as confluence, never treated as blind precision.</li>
-          </ul>
+        <div class="hero-panel">
+          <p class="section-label">Rule Stack</p>
+          <div class="rule-list">
+            <article class="rule-card">
+              <strong>Setup A</strong>
+              <span>1H bias -> 15m entry</span>
+            </article>
+            <article class="rule-card">
+              <strong>Setup B</strong>
+              <span>4H bias -> 1H entry</span>
+            </article>
+            <article class="rule-card">
+              <strong>Setup C</strong>
+              <span>1D bias -> 4H entry</span>
+            </article>
+          </div>
+          <small class="hero-note">No RSI divergence logic. No support/resistance logic. UO divergence stays the only trigger.</small>
         </div>
       </header>
 
-      <section class="overview-grid">
+      <section class="metrics-grid">
         <article class="metric card">
-          <span>Confirmed Longs</span>
-          <strong id="metricConfirmedLongs">-</strong>
+          <span>Total Signals</span>
+          <strong id="metricTotal">-</strong>
         </article>
         <article class="metric card">
-          <span>Confirmed Shorts</span>
-          <strong id="metricConfirmedShorts">-</strong>
+          <span>Long Signals</span>
+          <strong id="metricLongs">-</strong>
         </article>
         <article class="metric card">
-          <span>Near-Zone Watchlist</span>
-          <strong id="metricWatchlist">-</strong>
+          <span>Short Signals</span>
+          <strong id="metricShorts">-</strong>
         </article>
         <article class="metric card">
-          <span>Divergence Setups</span>
-          <strong id="metricDivergences">-</strong>
+          <span>Unique Symbols</span>
+          <strong id="metricUnique">-</strong>
         </article>
         <article class="metric card">
-          <span>1H Scalps</span>
-          <strong id="metricScalps">-</strong>
+          <span>Alerts Sent</span>
+          <strong id="metricAlerts">-</strong>
         </article>
         <article class="metric card">
           <span>Strongest Setup</span>
           <strong id="metricStrongest">-</strong>
           <small id="metricStrongestMeta">Waiting for scan</small>
         </article>
-        <article class="metric card">
-          <span>Last Scan</span>
-          <strong id="metricLastScan">-</strong>
-          <small id="scanMeta">No scan yet.</small>
-        </article>
       </section>
 
-      <section class="featured card">
+      <section class="control-panel card">
         <div class="section-head">
           <div>
-            <p class="section-label">Top Setups</p>
-            <h2>Fast decision strip</h2>
-          </div>
-          <div class="legend">
-            <span class="pill bullish">Demand Long</span>
-            <span class="pill bearish">Supply Short</span>
-            <span class="pill info">1H Scalp</span>
-            <span class="pill subtle">RSI Divergence</span>
-          </div>
-        </div>
-        <div id="featuredStrip" class="featured-strip">
-          <div class="empty-state">Run a scan to feature the strongest live setups.</div>
-        </div>
-      </section>
-
-      <section class="controls card sticky-panel">
-        <div class="controls-head">
-          <div>
             <p class="section-label">Scanner Controls</p>
-            <h2>Universe and engine settings</h2>
+            <h2>Run the divergence engine</h2>
           </div>
           <button id="scanButton" class="primary-button">Run Scan</button>
         </div>
-
-        <div class="controls-grid scan-grid">
+        <div class="control-grid">
           <label class="control">
             <span>Universe</span>
             <select id="universe">
-              <option value="nifty50">Nifty 50 cash watchlist</option>
-              <option value="fno">Liquid F&amp;O long / short</option>
-              <option value="all">NSE cash universe</option>
+              <option value="nifty50">Nifty 50</option>
+              <option value="fno">Liquid F&amp;O</option>
+              <option value="all">NSE broad list</option>
             </select>
           </label>
           <label class="control">
             <span>Max symbols</span>
-            <input id="limit" type="number" min="20" max="500" value="80" />
+            <input id="limit" type="number" min="5" max="120" value="24" />
+          </label>
+          <label class="control control-wide">
+            <span>Custom symbols (optional)</span>
+            <input id="symbols" type="text" placeholder="RELIANCE, HDFCBANK, ICICIBANK" />
           </label>
           <label class="control">
-            <span>Distance from zone (%)</span>
-            <input id="proximity" type="number" min="0.1" max="5" step="0.1" value="1" />
-          </label>
-          <label class="control">
-            <span>Impulse threshold</span>
-            <input id="impulse" type="number" min="1.1" max="3" step="0.1" value="1.5" />
-          </label>
-          <label class="control">
-            <span>Scan scope</span>
-            <input id="minTimeframes" type="text" value="All valid timeframes returned" disabled />
-          </label>
-          <label class="control">
-            <span>Structure scope</span>
-            <select id="scalpMode" disabled>
-              <option value="include" selected>All swing + scalp setups</option>
+            <span>Telegram alerts</span>
+            <select id="sendAlerts">
+              <option value="true">Enabled</option>
+              <option value="false">Disabled</option>
             </select>
           </label>
-          <label class="control">
-            <span>Scalp style</span>
-            <select id="scalpStyle">
-              <option value="conservative">Conservative</option>
-              <option value="aggressive">Aggressive</option>
-            </select>
-          </label>
-          <label class="control">
-            <span>RSI pivot length</span>
-            <input id="pivotLength" type="number" min="2" max="8" value="3" />
-          </label>
         </div>
-
-        <div class="preset-row" id="presetBar">
-          <button class="preset-button" data-preset="swing">Swing Reversals</button>
-          <button class="preset-button" data-preset="divergence">Divergence Setups</button>
-          <button class="preset-button" data-preset="scalp">Intraday Scalps</button>
-          <button class="preset-button" data-preset="score">High Score Only</button>
-          <button class="preset-button" data-preset="confirmed">Confirmed Setups Only</button>
-        </div>
-
-        <div class="controls-grid filter-grid">
+        <div class="control-grid filter-grid">
           <label class="control">
             <span>Direction</span>
             <select id="directionFilter">
               <option value="all">All</option>
-              <option value="bullish">Long only</option>
-              <option value="bearish">Short only</option>
+              <option value="LONG">Long only</option>
+              <option value="SHORT">Short only</option>
             </select>
           </label>
           <label class="control">
-            <span>Setup type</span>
-            <select id="setupTypeFilter">
-              <option value="all">All setup types</option>
+            <span>Setup</span>
+            <select id="setupFilter">
+              <option value="all">All setups</option>
+              <option value="A">Setup A</option>
+              <option value="B">Setup B</option>
+              <option value="C">Setup C</option>
             </select>
           </label>
           <label class="control">
-            <span>Zone timeframe</span>
-            <select id="zoneTfFilter">
+            <span>Quality</span>
+            <select id="qualityFilter">
               <option value="all">All</option>
-              <option value="1H">1H</option>
-              <option value="Daily">Daily</option>
-              <option value="Weekly">Weekly</option>
+              <option value="Prime">Prime</option>
+              <option value="High">High</option>
+              <option value="Watch">Watch</option>
             </select>
           </label>
           <label class="control">
-            <span>Trigger timeframe</span>
-            <select id="triggerTfFilter">
+            <span>Volume confirmation</span>
+            <select id="volumeFilter">
               <option value="all">All</option>
-              <option value="5M">5M</option>
-              <option value="15M">15M</option>
-              <option value="1H">1H</option>
-              <option value="4H">4H</option>
-              <option value="none">No trigger yet</option>
+              <option value="confirmed">1.5x average only</option>
             </select>
           </label>
           <label class="control">
-            <span>Min score</span>
+            <span>Minimum score</span>
             <input id="minScoreFilter" type="number" min="0" max="100" value="0" />
           </label>
           <label class="control">
-            <span>Max distance (%)</span>
-            <input id="maxDistanceFilter" type="number" min="0" max="10" step="0.1" value="10" />
-          </label>
-          <label class="control">
-            <span>Divergence required</span>
-            <select id="divergenceFilter">
-              <option value="all">No</option>
-              <option value="required">Yes</option>
-            </select>
-          </label>
-          <label class="control">
-            <span>Confirmed only</span>
-            <select id="confirmedFilter">
-              <option value="all">No</option>
-              <option value="required">Yes</option>
-            </select>
-          </label>
-          <label class="control">
-            <span>Mode</span>
-            <select id="modeFilter">
-              <option value="all">All</option>
-              <option value="Scalp">Scalp only</option>
-              <option value="Swing">Swing only</option>
-            </select>
-          </label>
-          <label class="control">
-            <span>Sort by</span>
+            <span>Sort</span>
             <select id="sortFilter">
-              <option value="score">Total score</option>
-              <option value="divergence">Divergence strength</option>
+              <option value="score">Score</option>
+              <option value="strength">Divergence strength</option>
               <option value="freshness">Freshness</option>
-              <option value="scalp">Scalp score</option>
-              <option value="distance">Distance</option>
+              <option value="volume">Volume ratio</option>
             </select>
           </label>
         </div>
+        <div class="scan-status">
+          <span id="statusBadge" class="pill subtle">Idle</span>
+          <small id="scanMeta">No scan yet.</small>
+        </div>
       </section>
 
-      <section class="tape-row" id="marketTape">
+      <section id="marketTape" class="tape-grid">
         <article class="metric card">
           <span>Market Tape</span>
-          <strong>Loading...</strong>
+          <strong>Waiting</strong>
         </article>
       </section>
 
-      <main class="layout">
-        <section class="main-column">
-          <section class="card table-card">
-            <div class="section-head">
-              <div>
-                <p class="section-label">Scanner Matrix</p>
-                <h2>Actionable setup board</h2>
-              </div>
-              <div class="table-summary" id="tableSummary">Waiting for scan.</div>
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Symbol</th>
-                    <th>Setup</th>
-                    <th>Timeframes</th>
-                    <th>Confluence</th>
-                    <th>Levels</th>
-                    <th>Score</th>
-                    <th>Warnings</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody id="stocksBody">
-                  <tr>
-                    <td colspan="8" class="empty-state">Run a scan to load live setups.</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
+      <section class="spotlight card">
+        <div class="section-head">
+          <div>
+            <p class="section-label">Top Signals</p>
+            <h2>Fast decision strip</h2>
+          </div>
+        </div>
+        <div id="topSignals" class="spotlight-grid">
+          <div class="empty-state">Run a scan to rank the strongest setups.</div>
+        </div>
+      </section>
 
-          <section class="card inspector-card">
-            <div class="section-head">
-              <div>
-                <p class="section-label">Setup Inspector</p>
-                <h2>Why this setup exists</h2>
-              </div>
+      <main class="main-grid">
+        <section class="table-panel card">
+          <div class="section-head">
+            <div>
+              <p class="section-label">Signal Board</p>
+              <h2>Qualified divergence matrix</h2>
             </div>
-            <div id="setupInspector" class="inspector-empty">
-              Select a setup row to inspect its score breakdown, trigger logic, divergence pivots, levels, and journal fields.
-            </div>
-          </section>
+            <div id="tableSummary" class="section-meta">Waiting for scan.</div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th>Setup</th>
+                  <th>Bias</th>
+                  <th>Signal</th>
+                  <th>Price</th>
+                  <th>Entry RSI / UO</th>
+                  <th>Quality</th>
+                  <th>Alert</th>
+                </tr>
+              </thead>
+              <tbody id="signalRows">
+                <tr>
+                  <td colspan="8" class="empty-state">No scan data loaded.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <aside class="sidebar">
-          <section class="card">
+          <section class="card detail-card">
             <div class="section-head">
               <div>
-                <p class="section-label">Market Overview</p>
-                <h2>Risk and breadth</h2>
+                <p class="section-label">Signal Inspector</p>
+                <h2>Read the setup cleanly</h2>
               </div>
             </div>
-            <div id="marketOverview" class="overview-list">
-              <div class="empty-state">Overview will load after the scan.</div>
+            <div id="detailPanel" class="empty-state">
+              Select a signal after the first scan to inspect divergence pivots, score mix, Telegram state, and internal output.
             </div>
           </section>
 
           <section class="card">
             <div class="section-head">
               <div>
-                <p class="section-label">Index Desk</p>
-                <h2>Index futures structure</h2>
+                <p class="section-label">Telegram</p>
+                <h2>Alert delivery status</h2>
               </div>
             </div>
-            <div id="indicesGrid" class="index-list">
-              <div class="empty-state">Index setups will appear after the scan.</div>
+            <div id="telegramSummary" class="stack-list">
+              <div class="empty-state compact">Telegram status will appear after the scan.</div>
             </div>
           </section>
 
           <section class="card">
             <div class="section-head">
               <div>
-                <p class="section-label">News Flow</p>
-                <h2>Stocks in focus</h2>
+                <p class="section-label">Method</p>
+                <h2>What qualifies</h2>
               </div>
             </div>
-            <div id="newsFeed" class="news-list">
-              <div class="empty-state">News will appear after the scan.</div>
-            </div>
-          </section>
-
-          <section class="card note-card">
-            <div class="section-head">
-              <div>
-                <p class="section-label">Journal</p>
-                <h2>Forward-test log</h2>
+            <div class="stack-list">
+              <div class="info-row">
+                <strong>Trigger</strong>
+                <span>UO divergence on entry timeframe only</span>
               </div>
-            </div>
-            <div id="journalList" class="journal-list">
-              <div class="empty-state">Saved trades will appear here.</div>
+              <div class="info-row">
+                <strong>Long filter</strong>
+                <span>Entry RSI &gt; 40 and bias RSI &gt; 50</span>
+              </div>
+              <div class="info-row">
+                <strong>Short filter</strong>
+                <span>Entry RSI &lt; 60 and bias RSI &lt; 50</span>
+              </div>
+              <div class="info-row">
+                <strong>Duplicate guard</strong>
+                <span>Same symbol + setup + side suppressed for 10 entry candles</span>
+              </div>
             </div>
           </section>
         </aside>
