@@ -129,6 +129,39 @@ function computeVolumeRatio(rows, window = 20) {
   return (rows[rows.length - 1].volume || 0) / baseline;
 }
 
+function computeAtr(rows, length = 14) {
+  if (rows.length < 2) {
+    return Array(rows.length).fill(null);
+  }
+
+  const trueRanges = rows.map((row, index) => {
+    if (index === 0) {
+      return row.high - row.low;
+    }
+    const previousClose = rows[index - 1].close;
+    return Math.max(
+      row.high - row.low,
+      Math.abs(row.high - previousClose),
+      Math.abs(row.low - previousClose)
+    );
+  });
+
+  const atr = Array(rows.length).fill(null);
+  if (trueRanges.length <= length) {
+    return atr;
+  }
+
+  let rolling = trueRanges.slice(1, length + 1).reduce((sum, value) => sum + value, 0) / length;
+  atr[length] = rolling;
+
+  for (let index = length + 1; index < trueRanges.length; index += 1) {
+    rolling = ((rolling * (length - 1)) + trueRanges[index]) / length;
+    atr[index] = rolling;
+  }
+
+  return atr;
+}
+
 function findPivotIndices(values, type, window) {
   const pivots = [];
 
@@ -327,14 +360,70 @@ function buildRationale(signal) {
   const entryLine = signal.signal === "LONG"
     ? `Entry RSI is ${signal.rsi}, keeping the long filter above 40.`
     : `Entry RSI is ${signal.rsi}, keeping the short filter below 60.`;
+  const executionLine = signal.executionState === "Wait for pullback"
+    ? `Price has already moved away from the divergence pivot, so this is a continuation idea but not a cheap entry.`
+    : `Price is still close enough to the divergence pivot to remain actionable.`;
 
-  return [priceLine, biasLine, entryLine];
+  return [priceLine, biasLine, entryLine, executionLine];
+}
+
+function buildExecutionState({ rows, divergence, direction, entryUo, atrValue }) {
+  const currentBar = rows[rows.length - 1];
+  const pivotPrice = divergence?.pivots?.price?.[1]?.value;
+  if (!currentBar || !Number.isFinite(pivotPrice) || !Number.isFinite(atrValue) || atrValue <= 0) {
+    return {
+      state: "Actionable",
+      label: "Actionable",
+      penalty: 0,
+      moveAtr: null,
+      movePct: null
+    };
+  }
+
+  const directionalMove = direction === "LONG"
+    ? currentBar.close - pivotPrice
+    : pivotPrice - currentBar.close;
+  const moveAtr = directionalMove / atrValue;
+  const movePct = (directionalMove / Math.max(Math.abs(pivotPrice), 0.01)) * 100;
+  const stretchedOscillator = direction === "LONG" ? entryUo >= 58 : entryUo <= 42;
+
+  if (moveAtr >= 2.4 || (moveAtr >= 1.7 && stretchedOscillator) || movePct >= 4.8) {
+    return {
+      state: "Wait for pullback",
+      label: "Extended",
+      penalty: 8,
+      moveAtr: round(moveAtr, 2),
+      movePct: round(movePct, 2)
+    };
+  }
+
+  if (moveAtr >= 1.35 || movePct >= 2.8) {
+    return {
+      state: "Manage entry",
+      label: "Near extension",
+      penalty: 3,
+      moveAtr: round(moveAtr, 2),
+      movePct: round(movePct, 2)
+    };
+  }
+
+  return {
+    state: "Actionable",
+    label: "Actionable",
+    penalty: 0,
+    moveAtr: round(moveAtr, 2),
+    movePct: round(movePct, 2)
+  };
 }
 
 function buildSignal({ rawSymbol, setup, rows, divergence, entryRsi, entryUo, biasRsi, volumeRatio }) {
   const currentBar = rows[rows.length - 1];
   const direction = divergence.direction;
+  const atrSeries = computeAtr(rows);
+  const atrValue = lastValue(atrSeries);
+  const execution = buildExecutionState({ rows, divergence, direction, entryUo, atrValue });
   const score = scoreSignal({ divergence, entryRsi, biasRsi, volumeRatio, direction });
+  const adjustedScore = clamp(Math.round(score.total - execution.penalty), 0, 100);
   const signal = {
     id: `${rawSymbol}:${setup.id}:${direction}:${divergence.pivots.price[1].at}`,
     symbol: displaySymbol(rawSymbol),
@@ -353,13 +442,20 @@ function buildSignal({ rawSymbol, setup, rows, divergence, entryRsi, entryUo, bi
     slopeDifference: divergence.slopeDifference,
     volumeRatio: round(volumeRatio, 2),
     volumeConfirmed: volumeRatio > 1.5,
-    score: score.total,
-    scoreBreakdown: score.breakdown,
-    quality: score.total >= 80 ? "Prime" : score.total >= 68 ? "High" : "Watch",
+    score: adjustedScore,
+    scoreBreakdown: {
+      ...score.breakdown,
+      execution: execution.penalty
+    },
+    quality: adjustedScore >= 80 ? "Prime" : adjustedScore >= 68 ? "High" : "Watch",
+    executionState: execution.state,
+    executionLabel: execution.label,
     pricePattern: divergence.pricePattern,
     oscillatorPattern: divergence.oscillatorPattern,
     pivotWindow: divergence.window,
     freshnessBars: divergence.ageBars,
+    extensionAtr: execution.moveAtr,
+    extensionPct: execution.movePct,
     time: currentBar.datetime,
     timeframeCombo: `${setup.biasTf} -> ${setup.entryTf}`,
     alertState: "pending",
@@ -372,6 +468,7 @@ function buildSignal({ rawSymbol, setup, rows, divergence, entryRsi, entryUo, bi
       price: round(currentBar.close),
       rsi: round(entryRsi),
       uo: round(entryUo),
+      executionState: execution.state,
       time: currentBar.datetime
     },
     internals: {
@@ -379,6 +476,7 @@ function buildSignal({ rawSymbol, setup, rows, divergence, entryRsi, entryUo, bi
       biasRsi: round(biasRsi),
       entryRsi: round(entryRsi),
       entryUo: round(entryUo),
+      atr: round(atrValue),
       currentVolume: round(currentBar.volume || 0, 0),
       lastBarTime: currentBar.datetime
     }

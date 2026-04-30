@@ -88,6 +88,12 @@ function pillClass(type) {
   if (normalized === "suppressed") {
     return "warning";
   }
+  if (normalized === "wait for pullback" || normalized === "extended" || normalized === "near extension") {
+    return "warning";
+  }
+  if (normalized === "actionable" || normalized === "manage entry") {
+    return "info";
+  }
   if (normalized === "high" || normalized === "configured") {
     return "info";
   }
@@ -169,6 +175,7 @@ function topSignalCard(signal) {
       <div class="signal-card-foot">
         ${pill(signal.divergence, signal.divergence)}
         ${pill(signal.quality, signal.quality)}
+        ${pill(signal.executionState, signal.executionLabel)}
         ${signal.volumeConfirmed ? pill("Volume confirmed", "configured") : pill("Standard volume", "subtle")}
       </div>
     </article>
@@ -224,9 +231,10 @@ function rowMarkup(signal, isSelected) {
         <div class="stack">
           <div class="stack-inline">
             ${pill(signal.quality, signal.quality)}
+            ${pill(signal.executionState, signal.executionLabel)}
             ${pill(`S ${formatCompact(signal.strengthScore)}`, "info")}
           </div>
-          <small>Volume ${formatNumber(signal.volumeRatio)}</small>
+          <small>Volume ${formatNumber(signal.volumeRatio)}${signal.extensionAtr !== null ? ` | ${formatNumber(signal.extensionAtr)} ATR from pivot` : ""}</small>
         </div>
       </td>
       <td>
@@ -327,6 +335,7 @@ function detailMarkup(signal) {
       <div class="hero-tags">
         ${pill(signal.signal, signal.signal)}
         ${pill(signal.quality, signal.quality)}
+        ${pill(signal.executionState, signal.executionLabel)}
         ${pill(signal.alertState, signal.alertState)}
       </div>
     </div>
@@ -336,6 +345,7 @@ function detailMarkup(signal) {
       ${detailStat("Entry RSI / UO", `${formatNumber(signal.rsi)} / ${formatNumber(signal.uo)}`, `${signal.entryTimeframe} close`)}
       ${detailStat("Bias RSI", formatNumber(signal.biasRsi), `${signal.biasTimeframe} filter`)}
       ${detailStat("Strength score", formatCompact(signal.strengthScore), `Slope diff ${formatNumber(signal.slopeDifference)}`)}
+      ${detailStat("Execution state", signal.executionState, signal.extensionAtr !== null ? `${formatNumber(signal.extensionAtr)} ATR | ${formatNumber(signal.extensionPct)}% from pivot` : "Extension unavailable")}
       ${detailStat("Volume ratio", formatNumber(signal.volumeRatio), signal.volumeConfirmed ? "1.5x confirmation met" : "No volume boost")}
     </div>
     <div class="detail-section">
@@ -373,6 +383,10 @@ function detailMarkup(signal) {
         <div class="info-row">
           <strong>Volume boost</strong>
           <span>${formatCompact(signal.scoreBreakdown.volume)}</span>
+        </div>
+        <div class="info-row">
+          <strong>Execution penalty</strong>
+          <span>${formatCompact(signal.scoreBreakdown.execution || 0)}</span>
         </div>
       </div>
     </div>
